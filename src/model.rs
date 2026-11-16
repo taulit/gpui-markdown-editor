@@ -368,7 +368,10 @@ pub struct TextPos {
 
 /// A range of text between two positions in document order.
 ///
-/// Ranges are only valid for the document they were created for.
+/// Returned by [`MarkdownEditor::find`](crate::MarkdownEditor::find) and
+/// accepted by [`highlight`](crate::MarkdownEditor::highlight) and
+/// [`scroll_to`](crate::MarkdownEditor::scroll_to). Ranges are only valid for
+/// the document they were created for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TextRange {
     /// Start of the range (inclusive).
