@@ -1,0 +1,42 @@
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# All entries are "unmaintained" notices for transitive gpui/gpui-component
+# dependencies we cannot change. No vulnerability advisories are ignored.
+ignore = [
+    { id = "RUSTSEC-2024-0384", reason = "instant: unmaintained, transitive via gpui" },
+    { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained, transitive via gpui" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile: unmaintained, transitive via gpui http client" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser: unmaintained, transitive via gpui text/svg stack" },
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz: unmaintained, transitive via gpui text stack" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant: unmaintained, transitive via zbus (Linux platform)" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names: unmaintained, transitive via zbus (Linux platform)" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: unmaintained, transitive via zbus (Linux platform)" },
+]
+
+[licenses]
+version = 2
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "0BSD",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
