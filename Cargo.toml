@@ -19,6 +19,8 @@ default = ["paste-html", "ui"]
 paste-html = ["dep:html5ever"]
 # Optional UI parts: FormatBar, SlashMenu, LinkPopover, FindBar.
 ui = []
+# `Serialize`/`Deserialize` for `DocMeta`, so hosts can persist it.
+serde = ["dep:serde"]
 
 [dependencies]
 # gpui-component pins the exact gpui-pre snapshot. Both versions move together.
@@ -28,14 +30,16 @@ pulldown-cmark = { version = "0.13", default-features = false }
 unicode-segmentation = "1.13"
 smallvec = "1.15"
 html5ever = { version = "0.40", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 gpui = { package = "gpui-pre", version = "=0.3.12", features = ["test-support"] }
-gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit", "x11", "wayland"] }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit", "x11", "wayland", "test-support"] }
 insta = "1.49"
 proptest = "1.12"
 criterion = "0.8"
 indoc = "2"
+serde_json = "1"
 
 [lints.rust]
 missing_docs = "warn"
