@@ -1,0 +1,45 @@
+[package]
+name = "gpui-markdown-editor"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+description = "WYSIWYG Markdown editor component for GPUI (Zed's UI framework) – lossless round-trip, tables, checklists, images."
+repository = "https://github.com/taulit/gpui-markdown-editor"
+readme = "README.md"
+keywords = ["gpui", "markdown", "editor", "wysiwyg", "rich-text"]
+categories = ["gui", "text-editors"]
+exclude = ["docs/design/", ".github/", "tests/corpus/"]
+# Publishing to crates.io is a manual, user-approved step (see docs/release-checklist.md).
+publish = false
+
+[features]
+default = ["paste-html", "ui"]
+# Convert HTML clipboard content into document blocks on paste.
+paste-html = ["dep:html5ever"]
+# Optional UI parts: FormatBar, SlashMenu, LinkPopover, FindBar.
+ui = []
+
+[dependencies]
+# gpui-component pins the exact gpui-pre snapshot. Both versions move together.
+gpui = { package = "gpui-pre", version = "=0.3.12" }
+gpui-component = "=0.10.0"
+pulldown-cmark = { version = "0.13", default-features = false }
+unicode-segmentation = "1.13"
+smallvec = "1.15"
+html5ever = { version = "0.40", optional = true }
+
+[dev-dependencies]
+gpui = { package = "gpui-pre", version = "=0.3.12", features = ["test-support"] }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit", "x11", "wayland"] }
+insta = "1.49"
+proptest = "1.12"
+criterion = "0.8"
+indoc = "2"
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
