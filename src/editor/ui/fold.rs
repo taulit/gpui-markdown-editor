@@ -76,6 +76,9 @@ fn headings(doc: &Document) -> Vec<BlockId> {
 /// The folded heading ids for the ordinals in `meta`. Only top-level
 /// headings fold.
 pub(in crate::editor) fn folds_by_id(doc: &Document, meta: &DocMeta) -> HashSet<BlockId> {
+    if meta.folded_headings.is_empty() {
+        return HashSet::new();
+    }
     let top: HashSet<BlockId> = doc.blocks().iter().map(Block::id).collect();
     headings(doc)
         .into_iter()
@@ -183,6 +186,11 @@ impl MarkdownEditor {
     /// Recomputes the hidden blocks after `folded` changed and, if `store`,
     /// writes the ordinals to the metadata (emitting `MetaChanged`).
     fn apply_folds(&mut self, cx: &mut Context<Self>, store: bool) {
+        // Loading a large document without folds skips the walks.
+        if self.folded.is_empty() && self.hidden.is_empty() && !store {
+            cx.notify();
+            return;
+        }
         let hidden = hidden_blocks(&self.state.doc, &self.folded);
         let changed: Vec<BlockId> = self.hidden.symmetric_difference(&hidden).copied().collect();
         self.hidden = hidden;

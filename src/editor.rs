@@ -623,6 +623,9 @@ fn tables(doc: &Document) -> Vec<BlockId> {
 
 /// The column widths of `meta` keyed by the ids of the tables of `doc`.
 fn widths_by_id(doc: &Document, meta: &DocMeta) -> ColumnWidths {
+    if meta.column_widths.is_empty() {
+        return ColumnWidths::default();
+    }
     tables(doc)
         .into_iter()
         .enumerate()
