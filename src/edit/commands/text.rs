@@ -609,7 +609,15 @@ impl EditorState {
             self.history.seal();
             return typed;
         }
-        let blocks: Vec<Inline> = text.split('\n').map(Inline::plain).collect();
+        // Blank lines separate paragraphs; they do not become empty ones.
+        let lines: Vec<&str> = text.split('\n').collect();
+        let last = lines.len() - 1;
+        let blocks: Vec<Inline> = lines
+            .iter()
+            .enumerate()
+            .filter(|(index, line)| *index == 0 || *index == last || !line.trim().is_empty())
+            .map(|(_, line)| Inline::plain(*line))
+            .collect();
         self.insert_inline_lines(blocks)
     }
 
@@ -695,7 +703,18 @@ pub(crate) fn insert_lines(
     if rest.is_empty() {
         return Ok(Selection::caret(split_at));
     }
-    let tail = tr.split(split_at, BlockKind::Paragraph)?;
+    // In list items every line is an item of the same kind, and the
+    // children follow the last one, as with Enter.
+    let kind = tr.block(pos.block)?.kind.clone();
+    let line_kind = match kind {
+        BlockKind::BulletItem => BlockKind::BulletItem,
+        BlockKind::TaskItem { .. } => BlockKind::TaskItem { checked: false },
+        BlockKind::OrderedItem { number } => BlockKind::OrderedItem {
+            number: number.saturating_add(1),
+        },
+        _ => BlockKind::Paragraph,
+    };
+    let tail = tr.split(split_at, line_kind.clone())?;
     let (parent, mut index) = tr.parent(tail)?;
     let count = rest.len();
     let mut caret = TextPos {
@@ -711,7 +730,7 @@ pub(crate) fn insert_lines(
                 offset: len,
             };
         } else {
-            let block = tr.new_block(BlockKind::Paragraph, line);
+            let block = tr.new_block(line_kind.clone(), line);
             tr.insert_block(parent, index, block)?;
             index += 1;
         }

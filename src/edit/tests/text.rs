@@ -294,7 +294,7 @@ fn typing_with_a_node_selected_starts_a_paragraph_below() {
 fn plain_text_with_lines_becomes_paragraphs() {
     let mut state = ed("- ab‸cd\n");
     state.insert_plain_text("one\ntwo\nthree");
-    assert_eq!(md(&state), "- abone\n\ntwo\n\nthreecd\n");
+    assert_eq!(md(&state), "- abone\n- two\n- threecd\n");
     assert_eq!(caret(&state), "three‸cd");
     let mut state = ed("```\na‸\n```\n");
     state.insert_plain_text("x\ny");
@@ -310,4 +310,32 @@ fn tab_with_a_selection_in_code_indents_every_line() {
     assert!(state.shift_tab());
     assert_eq!(md(&state), "```\nabc\ndef\nghi\nend\n```\n");
     assert_eq!(caret(&state), "ab«c\ndef\ngh‸i\nend");
+}
+
+#[test]
+fn pasting_lines_into_a_list_item_makes_items() {
+    let mut state = ed("- a‸b\n  - c\n");
+    state.insert_plain_text("x\ny");
+    assert_eq!(md(&state), "- ax\n- yb\n  - c\n");
+    assert_eq!(caret(&state), "y‸b");
+
+    let mut state = ed("- [x] a‸b\n");
+    state.insert_plain_text("x\ny\nz");
+    assert_eq!(md(&state), "- [x] ax\n- [ ] y\n- [ ] zb\n");
+
+    let mut state = ed("1. a‸b\n2. c\n");
+    state.insert_plain_text("x\ny");
+    assert_eq!(md(&state), "1. ax\n2. yb\n3. c\n");
+
+    let mut state = ed("# a‸b\n");
+    state.insert_plain_text("x\ny");
+    assert_eq!(md(&state), "# ax\n\nyb\n");
+}
+
+#[test]
+fn blank_lines_in_pasted_text_make_no_empty_paragraphs() {
+    let mut state = ed("a‸b\n");
+    state.insert_plain_text("x\n\n\ny");
+    assert_eq!(md(&state), "ax\n\nyb\n");
+    assert_eq!(state.doc.blocks.len(), 2);
 }
