@@ -177,10 +177,6 @@ impl TextCache {
         self.entries.remove(&(id, true));
     }
 
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
     /// Drops texts not used since `frame` when the cache grows large.
     pub fn prune(&mut self, frame: u64, max: usize) {
         if self.entries.len() > max {

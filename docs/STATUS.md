@@ -20,8 +20,11 @@ Read by other sessions. Keep terse.
 
 ## In progress
 
-- E2: rendering, cursor, input, IME, marks, lists, input rules, shortcuts. Branch `phase/e2-editing` holds only the
-  selection type so far; the editing core and the rendering element are not started (paused on 2026-11-17, model usage limit).
+- E2 (branch `phase/e2-editing`, not tagged): WYSIWYG editing works. `MarkdownEditor` owns the editing core and
+  renders the document; keyboard, mouse, IME, clipboard (Markdown text), input rules, shortcuts, undo/redo.
+  New API: `gpui_markdown_editor::init(cx)` (key bindings; call after `gpui_component::init`). See "Status" in the
+  crate docs and `CHANGELOG.md`. Still open for the E2 gate: manual IME check on a desktop (dead keys, Compose,
+  ibus-pinyin).
 
 ## Open
 

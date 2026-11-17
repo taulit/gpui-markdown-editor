@@ -13,8 +13,10 @@ use crate::model::{Align, Block, BlockId, BlockKind, Cell, Document, ImageData, 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Attr {
     /// Source, alt text, title and width of an image.
+    #[allow(dead_code)] // set by the image commands of the next phase
     Image(ImageData),
     /// The info string of a code block.
+    #[allow(dead_code)] // set by the code block language picker of the next phase
     CodeLang(Option<SharedString>),
     /// Whether a task item is ticked.
     Checked(bool),
@@ -51,11 +53,6 @@ pub(crate) enum TableOp {
     SetAlign {
         column: usize,
         align: Align,
-    },
-    SetCell {
-        row: usize,
-        col: usize,
-        content: Inline,
     },
 }
 
@@ -641,20 +638,6 @@ fn apply_table(
                 TableOp::SetAlign {
                     column: *column,
                     align: old,
-                },
-                false,
-            )
-        }
-        TableOp::SetCell { row, col, content } => {
-            let Some(cell) = data.rows.get_mut(*row).and_then(|r| r.get_mut(*col)) else {
-                return err("cell out of range");
-            };
-            let old = std::mem::replace(&mut cell.content, content.clone());
-            wrap(
-                TableOp::SetCell {
-                    row: *row,
-                    col: *col,
-                    content: old,
                 },
                 false,
             )

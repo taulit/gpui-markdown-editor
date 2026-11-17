@@ -69,18 +69,6 @@ impl EditorState {
         }
     }
 
-    /// UTF-16 offset in the caret's node to a byte offset.
-    pub(crate) fn utf16_to_offset(&self, utf16: usize) -> usize {
-        self.ime_node()
-            .map_or(0, |(_, text)| utf16_to_byte(&text, utf16))
-    }
-
-    /// Byte offset in the caret's node to a UTF-16 offset.
-    pub(crate) fn offset_to_utf16(&self, offset: usize) -> usize {
-        self.ime_node()
-            .map_or(0, |(_, text)| byte_to_utf16(&text, offset))
-    }
-
     /// The marked range in UTF-16 offsets of the caret's node.
     pub(crate) fn marked_range_utf16(&self) -> Option<Range<usize>> {
         let (_, range) = self.valid_marked()?;

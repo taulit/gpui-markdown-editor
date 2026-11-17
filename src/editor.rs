@@ -66,7 +66,7 @@ const BLINK_INTERVAL: Duration = Duration::from_millis(530);
 ///
 /// The editor fills the space its parent gives it and scrolls its content
 /// itself. gpui-component must be initialized (`gpui_component::init`) before
-/// the first editor is created; call [`init`](crate::init) at startup as
+/// the first editor is created; call [`init`] at startup as
 /// well to register the key bindings.
 ///
 /// # Interaction
@@ -106,7 +106,7 @@ impl MarkdownEditor {
     /// Creates an empty editor.
     ///
     /// The style starts as [`EditorStyle::from_theme`]. Registers the key
-    /// bindings if [`init`](crate::init) was not called yet.
+    /// bindings if [`init`] was not called yet.
     pub fn new(window: &mut Window, cx: &mut Context<Self>, mut options: EditorOptions) -> Self {
         init(cx);
         let extensions = Extensions::new(std::mem::take(&mut options.extensions));

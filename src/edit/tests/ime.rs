@@ -75,7 +75,9 @@ fn a_stale_marked_range_in_another_node_is_dropped() {
 #[test]
 fn utf16_conversions_use_the_caret_node() {
     let state = ed("😀a‸\n");
-    assert_eq!(state.offset_to_utf16(5), 3);
-    assert_eq!(state.utf16_to_offset(2), 4);
-    assert_eq!(state.utf16_to_offset(1), 0);
+    let node = state.selection.head().unwrap().block;
+    assert_eq!(state.utf16_range_to_bytes(&(2..3)), Some((node, 4..5)));
+    // Inside the surrogate pair: the start of the emoji.
+    assert_eq!(state.utf16_range_to_bytes(&(1..3)), Some((node, 0..5)));
+    assert_eq!(state.selected_range_utf16(), Some((3..3, false)));
 }

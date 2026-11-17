@@ -56,10 +56,16 @@
 //! fn init(cx: &mut App) {
 //!     // Once, before the first editor is created.
 //!     gpui_component::init(cx);
+//!     gpui_markdown_editor::init(cx);
 //! }
 //! ```
 //!
-//! A complete program is in `examples/basic.rs`.
+//! [`init`] registers the key bindings in the key context `MarkdownEditor`.
+//! [`MarkdownEditor::new`] calls it if the host did not, but calling it at
+//! startup, before binding your own keys, lets your bindings take
+//! precedence.
+//!
+//! Complete programs are in `examples/basic.rs` and `examples/notes.rs`.
 //!
 //! # Feature flags
 //!
@@ -71,27 +77,47 @@
 //!
 //! # Status
 //!
-//! This is version 0.0.1, the API skeleton. The public API is complete and is
-//! what later versions implement, but the editor behind it is deliberately
-//! simple for now:
+//! Unreleased, phase E2: the document is edited in place (WYSIWYG). What
+//! works:
 //!
-//! - The view edits the **Markdown source as plain text** in a multi-line
-//!   input. Formatting is not rendered yet. Loading, editing, undo, saving,
-//!   [`find`](MarkdownEditor::find) and
-//!   [`word_count`](MarkdownEditor::word_count) work.
-//! - Of the [`Command`]s only `Undo`, `Redo`, `SelectAll`, `InsertText`,
-//!   `InsertMarkdown` and `OpenFind` have an effect. The others are accepted
-//!   and do nothing.
-//! - [`highlight`](MarkdownEditor::highlight),
-//!   [`scroll_to`](MarkdownEditor::scroll_to) and
-//!   [`set_meta`](MarkdownEditor::set_meta) store their state without a
-//!   visible effect. Of [`EditorStyle`] only the font, text size, line height
-//!   and the top and side padding are applied. Colors follow the
-//!   gpui-component theme.
-//! - Of [`EditorOptions`] only `max_width`, `extensions` and `ui.find_bar`
-//!   are used. The callbacks are never called.
-//! - Only [`EditorEvent::Changed`] and [`EditorEvent::SelectionChanged`] are
-//!   emitted.
+//! - **Typing** with the Markdown input rules (`# `, `- `, `1. `, `[] `,
+//!   `> `, ` ``` `, `---`, `**x**`, `*x*`, `~~x~~`, `` `x` ``, `==x==`;
+//!   Backspace right after a rule undoes it), Enter and Shift+Enter, Tab and
+//!   Shift+Tab in lists, code blocks and table cells.
+//! - **Shortcuts** (Cmd instead of Ctrl on macOS): Ctrl+B/I/U, Ctrl+Shift+X
+//!   strike, Ctrl+E code, Ctrl+Shift+H highlight, Ctrl+K link (links to the
+//!   URL on the clipboard or removes the link), Ctrl+Shift+L checklist,
+//!   Ctrl+Alt+1..3 headings, Ctrl+Alt+0 text, Ctrl+Enter checkbox, Alt+Up/Down
+//!   move block, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y, Ctrl+A (block, then
+//!   document), Ctrl+C/X/V.
+//! - **Caret movement** with arrows, Ctrl+arrows (Alt on macOS) by words,
+//!   Home/End by visual lines, Ctrl+Home/End, PageUp/PageDown, all with Shift
+//!   to select, across blocks. Up and Down keep the column. Backspace and
+//!   Delete, with Ctrl by words.
+//! - **Mouse**: click, Shift+click, drag (scrolling at the edges), double
+//!   click selects a word, triple click a block; a click on a checkbox
+//!   toggles it, on a rule or image selects it. Ctrl+click (Cmd+click) on a
+//!   link, wiki link or tag emits its event; a plain click places the caret.
+//! - **IME** through GPUI's input handler: marked text is underlined, the
+//!   candidate window follows the caret, stale ranges from the input method
+//!   are clamped.
+//! - **Clipboard**: copy and cut write the selection as Markdown text. Paste
+//!   inserts Markdown as blocks and other text as plain text; a URL pasted
+//!   over selected text links it.
+//! - **History**: undo and redo, typing grouped by word. Undoing every edit
+//!   gives back the loaded text byte for byte; [`is_dirty`](MarkdownEditor::is_dirty)
+//!   follows the history, so undoing to the saved state is clean again.
+//! - All [`Command`]s except `FoldHeading` and `OpenFind`, which do nothing
+//!   yet. [`highlight`](MarkdownEditor::highlight),
+//!   [`scroll_to`](MarkdownEditor::scroll_to), [`EditorStyle`],
+//!   `first_line_is_title` and `max_width` are applied.
+//!
+//! Not yet: the UI parts of [`UiParts`] (format bar, slash menu, find bar,
+//! link popover), folding, table structure editing beyond Tab and Enter in
+//! cells, image loading (images show as placeholders), HTML and image paste,
+//! accessibility. The callbacks in [`EditorOptions`] are never called, and
+//! [`EditorEvent::MetaChanged`] and [`EditorEvent::AttachmentClicked`] are
+//! never emitted.
 
 pub mod command;
 mod edit;

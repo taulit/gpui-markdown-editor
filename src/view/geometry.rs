@@ -206,6 +206,7 @@ impl<'a> ViewQuery<'a> {
     }
 
     /// The bounds of a block, nested block or cell.
+    #[allow(dead_code)] // places the format bar and popovers of the next phase
     pub fn block_bounds(&mut self, id: BlockId) -> Option<Bounds<Pixels>> {
         let ix = self.state.locate(self.input.document, id)?;
         let layout = self.layout(ix)?;
@@ -365,24 +366,19 @@ impl<'a> ViewQuery<'a> {
     // --- scrolling ---------------------------------------------------------
 
     /// The document y at the top of the viewport.
+    #[cfg(test)]
     pub fn scroll_top(&mut self) -> Pixels {
         self.state.scroll_top()
     }
 
     /// Total height of the document (estimated for blocks not laid out).
+    #[cfg(test)]
     pub fn content_height(&mut self) -> Pixels {
         self.state.content_height()
     }
 
-    pub fn viewport_height(&self) -> Pixels {
-        self.state.viewport_height()
-    }
-
-    pub fn set_scroll_top(&mut self, y: Pixels) {
-        self.state.set_scroll_top(y);
-    }
-
     /// Scrolls by `dy` (positive scrolls down), clamped to the content.
+    #[cfg(test)]
     pub fn scroll_by(&mut self, dy: Pixels) {
         self.state.scroll_by(dy);
     }
@@ -412,6 +408,7 @@ impl<'a> ViewQuery<'a> {
     }
 
     /// Scrolls `pos` into view, see [`Self::scroll_to_reveal`].
+    #[cfg(test)]
     pub fn reveal(&mut self, pos: TextPos) {
         self.scroll_to_reveal(TextRange {
             start: pos,

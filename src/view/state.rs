@@ -25,7 +25,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use gpui::{Bounds, Pixels, WindowTextSystem, point, px, size};
+use gpui::{Bounds, Pixels, WindowTextSystem, point, px};
 
 use crate::model::{Block, BlockId, BlockKind, Document};
 use crate::style::EditorStyle;
@@ -50,6 +50,7 @@ struct CachedBlock {
 }
 
 /// Counters for tests and timing.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ViewStats {
     /// Texts shaped since the view was created.
@@ -127,6 +128,7 @@ impl Default for ViewState {
 }
 
 impl ViewState {
+    #[cfg(test)]
     pub fn stats(&self) -> ViewStats {
         ViewStats {
             shaped_texts: self.texts.shaped,
@@ -260,10 +262,6 @@ impl ViewState {
         let tops = self.tops();
         let ix = tops.partition_point(|t| *t <= y).saturating_sub(1);
         Some(ix.min(self.slots.len() - 1))
-    }
-
-    pub fn slot_of_top(&self, id: BlockId) -> Option<usize> {
-        self.slot_index.get(&id).copied()
     }
 
     /// Finds the top-level block that contains `id` (a block, nested block or
@@ -464,13 +462,6 @@ impl ViewState {
         point(
             p.x - self.bounds.origin.x - self.column_x,
             p.y - self.bounds.origin.y + top,
-        )
-    }
-
-    pub fn column_bounds(&self) -> Bounds<Pixels> {
-        Bounds::new(
-            point(self.bounds.origin.x + self.column_x, self.bounds.origin.y),
-            size(self.width, self.bounds.size.height),
         )
     }
 }

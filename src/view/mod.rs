@@ -36,6 +36,7 @@ use crate::style::EditorStyle;
 
 pub(crate) use element::DocumentElement;
 pub(crate) use geometry::ViewQuery;
+#[cfg(test)]
 pub(crate) use state::ViewStats;
 
 /// What layout depends on.
@@ -98,6 +99,7 @@ impl DocumentView {
     }
 
     /// Drops all layouts, keeping the scroll position.
+    #[cfg(test)]
     pub fn invalidate_all(&self) {
         self.state.borrow_mut().invalidate_all();
     }
@@ -128,6 +130,7 @@ impl DocumentView {
     }
 
     /// Counters for tests and timing.
+    #[cfg(test)]
     pub fn stats(&self) -> ViewStats {
         self.state.borrow().stats()
     }

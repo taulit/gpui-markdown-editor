@@ -16,6 +16,7 @@ use crate::model::{Block, BlockId, BlockKind, Document, Inline, TextPos};
 impl EditorState {
     /// The selected text without formatting. Blocks are separated by line
     /// breaks.
+    #[cfg(test)]
     pub(crate) fn selected_text(&self) -> String {
         let Some((start, end)) = self.ordered() else {
             return String::new();

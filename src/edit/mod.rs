@@ -5,10 +5,6 @@
 //! point; the view feeds it keystrokes, IME events and commands and reads
 //! back the document, the selection and what changed.
 
-// The view wires this API to keyboard, mouse and IME next; until then much
-// of it is only reached from tests.
-#![allow(dead_code)]
-
 pub(crate) mod commands;
 pub(crate) mod history;
 pub(crate) mod ime;

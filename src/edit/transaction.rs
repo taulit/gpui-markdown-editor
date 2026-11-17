@@ -32,17 +32,6 @@ pub(crate) struct Applied {
     pub(crate) structure: bool,
 }
 
-impl Applied {
-    pub(crate) fn merge(&mut self, other: Applied) {
-        for id in other.changed {
-            if !self.changed.contains(&id) {
-                self.changed.push(id);
-            }
-        }
-        self.structure |= other.structure;
-    }
-}
-
 /// A transaction under construction. Every step is applied immediately.
 pub(crate) struct Tr<'a> {
     doc: &'a mut Document,
@@ -70,10 +59,6 @@ impl<'a> Tr<'a> {
 
     pub(crate) fn doc(&self) -> &Document {
         self.doc
-    }
-
-    pub(crate) fn index(&self) -> &PathIndex {
-        self.index
     }
 
     pub(crate) fn is_empty(&self) -> bool {

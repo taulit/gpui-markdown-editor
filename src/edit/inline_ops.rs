@@ -265,6 +265,7 @@ pub(crate) fn containing(inline: &Inline, offset: usize) -> Vec<Mark> {
 }
 
 /// Checks the invariants of [`Inline`]. Used by tests and debug assertions.
+#[cfg(test)]
 pub(crate) fn check(inline: &Inline) -> Result<(), String> {
     let text = &inline.text;
     let mut previous: Option<&MarkSpan> = None;
