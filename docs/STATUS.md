@@ -20,7 +20,8 @@ Read by other sessions. Keep terse.
 
 ## In progress
 
-- E2: rendering, cursor, input, IME, marks, lists, input rules, shortcuts.
+- E2: rendering, cursor, input, IME, marks, lists, input rules, shortcuts. Branch `phase/e2-editing` holds only the
+  selection type so far; the editing core and the rendering element are not started (paused on 2026-11-17, model usage limit).
 
 ## Open
 
