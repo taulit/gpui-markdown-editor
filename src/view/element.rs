@@ -68,6 +68,7 @@ fn cursor_at(
         None => {}
     }
     if q.checkbox_at(p).is_some()
+        || q.attachment_at(p).is_some()
         || q.fold_toggle_at(p).is_some()
         || (window.modifiers().secondary(cx) && q.link_at(p).is_some())
     {

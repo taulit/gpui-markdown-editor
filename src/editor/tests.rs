@@ -4,6 +4,7 @@
 //! 0.6 em wide), which is enough for geometry: clicks are aimed with the
 //! view's own queries.
 
+mod attachment;
 mod clipboard;
 mod complete;
 mod drag;

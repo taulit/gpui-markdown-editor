@@ -19,6 +19,14 @@ After review (part 3):
   `TableInsertRowAbove`, `TableInsertRowBelow`, `TableInsertColumnLeft`,
   `TableInsertColumnRight`, `TableDeleteRow`, `TableDeleteColumn`,
   `TableMoveColumnLeft`, `TableMoveColumnRight`, `TableMenu`.
+- Attachments (plan §9): a paragraph that is only a link to a local file
+  that is not an image is drawn as an attachment row (file icon, link text
+  as name, file size when `resolve_src` resolves it). A click on the row
+  outside the name, or Ctrl/Cmd+click on the name, emits
+  `EditorEvent::AttachmentClicked` with the link target. Dropped files that
+  are not images are inserted as such paragraphs linking to the dropped
+  path (§1a defines no host hook for them). Before, other dropped files
+  were ignored.
 - Folding: the caret and node selections never end up in a folded
   section (movement skips hidden rules, images and tables too). An edit
   that would hide visible content unfolds the section instead: Enter at

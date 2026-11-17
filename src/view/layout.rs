@@ -132,6 +132,12 @@ pub(crate) enum Decoration {
         bounds: Bounds<Pixels>,
         src: SharedString,
     },
+    /// The row of an attachment paragraph and its file icon.
+    Attachment {
+        id: BlockId,
+        bounds: Bounds<Pixels>,
+        icon: Bounds<Pixels>,
+    },
 }
 
 /// The laid out top-level block.
@@ -200,6 +206,65 @@ pub(crate) struct Extras<'a> {
     pub images: &'a ImageStates,
     /// The width of an image being resized, shown before it is applied.
     pub image_preview: Option<(BlockId, u32)>,
+    /// The file sizes of attachments by link target (`None`: unknown).
+    pub attachments: &'a AttachmentSizes,
+}
+
+/// File sizes of attachments by link target, see [`attachment_of`].
+pub(crate) type AttachmentSizes = HashMap<SharedString, Option<u64>>;
+
+/// The link target of an attachment: a paragraph that consists of one link
+/// to a local file that is not an image (plan §9). Such a paragraph is
+/// drawn as a row with a file icon, the link text as file name, and the
+/// file size if [`EditorOptions::resolve_src`](crate::EditorOptions::resolve_src)
+/// resolves it.
+pub(crate) fn attachment_of(block: &Block) -> Option<&SharedString> {
+    if block.kind != BlockKind::Paragraph || block.content.text.trim().is_empty() {
+        return None;
+    }
+    let [span] = block.content.marks.as_slice() else {
+        return None;
+    };
+    let Mark::Link { url, .. } = &span.mark else {
+        return None;
+    };
+    let whole = span.range == (0..block.content.text.len());
+    let local = !url.is_empty() && !url.starts_with('#') && !has_scheme(url);
+    let image = super::images::image_mime(std::path::Path::new(url.as_ref())).is_some();
+    (whole && local && !image).then_some(url)
+}
+
+/// `true` for `https:`, `mailto:` and other URL schemes; a Windows drive
+/// letter (`C:`) is not one.
+fn has_scheme(url: &str) -> bool {
+    let Some(colon) = url.find(':') else {
+        return false;
+    };
+    let scheme = &url[..colon];
+    scheme.len() > 1
+        && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+}
+
+/// A file size for people: `512 B`, `12 KB`, `1.4 MB`.
+pub(crate) fn format_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64 / 1024.;
+    let mut unit = 0;
+    while value >= 1024. && unit + 1 < UNITS.len() {
+        value /= 1024.;
+        unit += 1;
+    }
+    if value < 10. {
+        format!("{value:.1} {}", UNITS[unit])
+    } else {
+        format!("{value:.0} {}", UNITS[unit])
+    }
 }
 
 pub(crate) struct LayoutEnv<'a> {
@@ -357,6 +422,62 @@ fn place(
     };
 
     match &block.kind {
+        BlockKind::Paragraph if !ctx.title && attachment_of(block).is_some() => {
+            let url = attachment_of(block).cloned().unwrap_or_default();
+            let (pad_x, pad_y) = (px(12.), px(8.));
+            let icon_size = size(px(16.), px(20.));
+            let gap = px(10.);
+            let spec = env.body();
+            let mut label_spec = spec.clone();
+            label_spec.color = s.muted_color;
+            label_spec.size = s.table_text_size;
+            let label = env
+                .extras
+                .attachments
+                .get(&url)
+                .copied()
+                .flatten()
+                .map(|bytes| env.label(&format_size(bytes), &label_spec));
+            let label_w = label.as_ref().map_or(Pixels::ZERO, |l| l.width + gap);
+            let above = if ctx.first { Pixels::ZERO } else { px(2.) };
+            let top = y + above;
+            let text_x = x + pad_x + icon_size.width + gap;
+            let text_w = (width - (text_x - x) - pad_x - label_w).max(px(20.));
+            let h = text_node(
+                env,
+                out,
+                block.id,
+                &block.content,
+                &spec,
+                point(text_x, top + pad_y),
+                text_w,
+            );
+            let row_h = h + pad_y * 2.;
+            let lh = spec.line_height;
+            let icon = Bounds::new(
+                point(
+                    x + pad_x,
+                    top + pad_y + ((lh - icon_size.height) / 2.).max(Pixels::ZERO),
+                ),
+                icon_size,
+            );
+            out.decorations.push(Decoration::Attachment {
+                id: block.id,
+                bounds: Bounds::new(point(x, top), size(width, row_h)),
+                icon,
+            });
+            if let Some(label) = label {
+                let lw = label.width;
+                let ly = top + pad_y + ((lh - label.height()) / 2.).max(Pixels::ZERO);
+                out.decorations.push(Decoration::Text {
+                    origin: point(x + width - pad_x - lw, ly),
+                    text: label,
+                    align: TextAlign::Left,
+                    width: lw,
+                });
+            }
+            (above, row_h, para)
+        }
         BlockKind::Paragraph | BlockKind::Heading(_) => {
             let level = match block.kind {
                 BlockKind::Heading(l) => l,
@@ -889,6 +1010,11 @@ fn hash_block(block: &Block, h: &mut DefaultHasher, extras: Extras<'_>) {
                 .filter(|(id, _)| *id == block.id)
                 .hash(h);
         }
+        BlockKind::Paragraph => {
+            if let Some(url) = attachment_of(block) {
+                extras.attachments.get(url).hash(h);
+            }
+        }
         BlockKind::Table(t) => {
             for w in extras.widths.get(&block.id).into_iter().flatten() {
                 w.to_bits().hash(h);
@@ -964,6 +1090,16 @@ pub(crate) fn estimate_height(block: &Block, style: &EditorStyle, width: Pixels)
 #[cfg(test)]
 mod number_tests {
     use super::is_number;
+
+    #[test]
+    fn file_sizes() {
+        use super::format_size;
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(1023), "1023 B");
+        assert_eq!(format_size(2048), "2.0 KB");
+        assert_eq!(format_size(248 * 1024), "248 KB");
+        assert_eq!(format_size(3 << 19), "1.5 MB");
+    }
 
     #[test]
     fn numbers_as_written_in_tables() {

@@ -531,6 +531,41 @@ fn e3_fold() {
     }
 }
 
+const E3_ATTACHMENT: &str = "\
+Trip documents
+
+The booking and the route are attached:
+
+[Booking confirmation.pdf](booking.pdf)
+
+[Route plan.gpx](route.gpx)
+
+[Packing list.xlsx](missing.xlsx)
+
+Bring a printed copy of the booking.
+";
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_attachment() {
+    let dir = std::env::temp_dir().join(format!("gme-e3-attach-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("booking.pdf"), vec![0u8; 248 * 1024]).unwrap();
+    std::fs::write(dir.join("route.gpx"), vec![0u8; 3 * 1024 * 1024 / 2]).unwrap();
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture_with_keys(
+            &format!("e3-attachment-{name}"),
+            mode,
+            E3_ATTACHMENT,
+            |_, _| {},
+            &[],
+            &[],
+            Some(&dir),
+        );
+    }
+    std::fs::remove_dir_all(dir).ok();
+}
+
 fn write_gradient(path: &Path, width: u32, height: u32, from: [u8; 3], to: [u8; 3]) {
     let img = image::RgbaImage::from_fn(width, height, |x, y| {
         let t = (x as f32 / width as f32 + y as f32 / height as f32) / 2.;

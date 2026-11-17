@@ -74,6 +74,8 @@ pub(crate) struct ViewState {
     texts: TextCache,
     /// Load states of the images near the viewport, by source.
     pub images: super::images::ImageStates,
+    /// File sizes of attachments, looked up once per link target.
+    pub attachments: super::layout::AttachmentSizes,
     /// Nested block or cell id -> top-level id, filled by layouts.
     node_top: HashMap<BlockId, BlockId>,
     style: Option<EditorStyle>,
@@ -112,6 +114,7 @@ impl Default for ViewState {
             blocks: HashMap::new(),
             texts: TextCache::default(),
             images: Default::default(),
+            attachments: Default::default(),
             node_top: HashMap::new(),
             style: None,
             title: false,
@@ -345,10 +348,18 @@ impl ViewState {
             return Some(self.empty.clone());
         }
         let ctx = self.ctx(input.document, ix);
+        if let Some(url) = super::layout::attachment_of(block)
+            && !self.attachments.contains_key(url)
+        {
+            let resolver = input.resolve_src.map(|r| &**r as &super::images::Resolve);
+            let size = super::images::file_size(url, resolver);
+            self.attachments.insert(url.clone(), size);
+        }
         let extras = super::layout::Extras {
             widths: input.column_widths,
             images: &self.images,
             image_preview: input.image_preview,
+            attachments: &self.attachments,
         };
         let key = block_key(block, ctx, self.width, extras);
         let frame = self.frame;

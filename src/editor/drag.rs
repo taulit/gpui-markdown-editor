@@ -1,14 +1,14 @@
 //! Dragging into and within the document (plan §7): image files dropped
 //! onto the editor, and top-level blocks moved by their drag handle.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use gpui::{Context, Pixels, Point, Window};
 
 use super::MarkdownEditor;
 use crate::edit::Selection;
 use crate::model::TextPos;
-use crate::view::images::{MAX_IMAGE_BYTES, read_capped};
+use crate::view::images::{MAX_IMAGE_BYTES, image_mime, read_capped};
 
 /// A top-level block (with the folded section of a heading) being moved.
 #[derive(Clone, Copy, Debug)]
@@ -20,28 +20,15 @@ pub(super) struct BlockDrag {
     pub gap: Option<usize>,
 }
 
-/// The MIME type of an image file, by extension.
-pub(super) fn image_mime(path: &Path) -> Option<&'static str> {
-    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-    Some(match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        "svg" => "image/svg+xml",
-        "tif" | "tiff" => "image/tiff",
-        _ => return None,
-    })
-}
-
 impl MarkdownEditor {
-    /// Files dropped at `position`: the caret goes to the drop point, and
-    /// image files go through
+    /// Files dropped at `position`: the caret goes to the drop point.
+    /// Image files go through
     /// [`EditorOptions::on_image`](crate::EditorOptions::on_image) like
-    /// pasted image data and are inserted there as image blocks. The files
-    /// are read on the background executor, regular files of at most
-    /// [`MAX_IMAGE_BYTES`] only. Other files are ignored.
+    /// pasted image data and are inserted there as image blocks; they are
+    /// read on the background executor, regular files of at most
+    /// [`MAX_IMAGE_BYTES`] only. Other files are inserted as attachments:
+    /// a paragraph linking to the dropped path (the plan defines no host
+    /// hook for them).
     pub(super) fn drop_paths(
         &mut self,
         paths: &[PathBuf],
@@ -49,14 +36,18 @@ impl MarkdownEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.options.on_image.is_none() {
-            return;
+        let on_image = self.options.on_image.is_some();
+        let mut images: Vec<(PathBuf, &'static str)> = Vec::new();
+        let mut files: Vec<&PathBuf> = Vec::new();
+        for path in paths {
+            match image_mime(path) {
+                Some(mime) if on_image => images.push((path.clone(), mime)),
+                Some(_) => {}
+                None if path.is_dir() => {}
+                None => files.push(path),
+            }
         }
-        let images: Vec<(PathBuf, &'static str)> = paths
-            .iter()
-            .filter_map(|p| Some((p.clone(), image_mime(p)?)))
-            .collect();
-        if images.is_empty() {
+        if images.is_empty() && files.is_empty() {
             return;
         }
         let ts = window.text_system().clone();
@@ -65,7 +56,16 @@ impl MarkdownEditor {
         if let Some(pos) = target {
             self.state.set_selection(Selection::caret(pos));
         }
+        for path in files {
+            let name = path
+                .file_name()
+                .map_or_else(|| path.to_string_lossy(), |n| n.to_string_lossy());
+            self.state.insert_attachment(&name, &path.to_string_lossy());
+        }
         self.after_change(false, window, cx);
+        if images.is_empty() {
+            return;
+        }
         let read = cx.background_executor().spawn(async move {
             images
                 .into_iter()
@@ -139,7 +139,7 @@ impl MarkdownEditor {
 
 #[cfg(test)]
 mod tests {
-    use super::image_mime;
+    use crate::view::images::image_mime;
     use std::path::Path;
 
     #[test]

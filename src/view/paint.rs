@@ -124,6 +124,35 @@ pub(crate) fn build_frame(
                             .push((*bounds + v.origin, image.clone(), style.image_radius));
                     }
                 }
+                Decoration::Attachment { bounds, icon, .. } => {
+                    frame.under.push(quad(
+                        *bounds + v.origin,
+                        style.code_radius,
+                        style.code_background,
+                        px(1.),
+                        style.table_border_color,
+                        Default::default(),
+                    ));
+                    // A sheet of paper with two lines of text.
+                    let b = *icon + v.origin;
+                    frame.over.push(Overlay::Quad(quad(
+                        b,
+                        px(3.),
+                        transparent_black(),
+                        px(1.5),
+                        style.muted_color,
+                        Default::default(),
+                    )));
+                    for i in 0..2 {
+                        let line = Bounds::new(
+                            point(b.left() + px(4.), b.top() + px(7.) + px(4.) * i as f32),
+                            size(b.size.width - px(8.), px(1.5)),
+                        );
+                        frame
+                            .over
+                            .push(Overlay::Quad(fill(line, style.muted_color)));
+                    }
+                }
                 Decoration::Checkbox {
                     bounds, checked, ..
                 } => {

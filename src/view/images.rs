@@ -205,6 +205,33 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Decoded, String> {
     })
 }
 
+/// The MIME type of an image file, by extension.
+pub(crate) fn image_mime(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "svg" => "image/svg+xml",
+        "tif" | "tiff" => "image/tiff",
+        _ => return None,
+    })
+}
+
+/// The size in bytes of the local file `src` names (through the resolver,
+/// or an absolute path without one), if it is a regular file.
+pub(crate) fn file_size(src: &str, resolver: Option<&Resolve>) -> Option<u64> {
+    match resolve(src, resolver)? {
+        Source::File(path) => std::fs::metadata(&path)
+            .ok()
+            .filter(|m| m.is_file())
+            .map(|m| m.len()),
+        Source::Url(_) => None,
+    }
+}
+
 /// A borrowed [`SrcResolver`](crate::options::SrcResolver).
 pub(crate) type Resolve = dyn Fn(&str) -> Option<PathBuf>;
 

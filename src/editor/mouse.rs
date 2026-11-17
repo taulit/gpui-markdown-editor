@@ -145,6 +145,11 @@ impl ViewSource for MarkdownEditor {
             }
             q = view.query(self.layout_input(), &ts);
         }
+        if let Some(block) = q.attachment_at(p) {
+            drop(q);
+            self.emit_attachment(block, cx);
+            return;
+        }
         if let Some(item) = q.checkbox_at(p) {
             drop(q);
             self.state.toggle_task_item(item);
@@ -389,7 +394,25 @@ impl MarkdownEditor {
     }
 
     /// Emits the event for a link, wiki link or tag in `block`.
+    /// Emits [`EditorEvent::AttachmentClicked`] for attachment paragraph
+    /// `block`. `false` if it is not one.
+    fn emit_attachment(&mut self, block: BlockId, cx: &mut Context<Self>) -> bool {
+        let url = self
+            .state
+            .doc
+            .block(block)
+            .and_then(crate::view::attachment_of)
+            .map(|url| url.to_string());
+        if let Some(url) = &url {
+            cx.emit(EditorEvent::AttachmentClicked(url.clone()));
+        }
+        url.is_some()
+    }
+
     fn emit_link(&mut self, block: BlockId, span: &MarkSpan, cx: &mut Context<Self>) {
+        if self.emit_attachment(block, cx) {
+            return;
+        }
         let text = self
             .state
             .text_of(block)

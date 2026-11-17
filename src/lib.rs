@@ -141,8 +141,16 @@
 //! - **Folding**: the chevron left of a heading (or Ctrl+.) folds its
 //!   section; folded blocks are not laid out and the caret skips them. The
 //!   state is [`DocMeta::folded_headings`].
+//! - **Attachments** (plan §9): a paragraph that is only a link to a local
+//!   file that is not an image (`[Report.pdf](files/report.pdf)`) is drawn
+//!   as a row with a file icon, the link text as name and the file size
+//!   (when [`EditorOptions::resolve_src`] resolves it). A click on the row
+//!   outside the name, or Ctrl+click (Cmd+click) on the name, emits
+//!   [`EditorEvent::AttachmentClicked`]; a plain click on the name edits it.
 //! - **Drag and drop**: a handle left of a block moves it with its
-//!   children; dropped image files go through [`EditorOptions::on_image`].
+//!   children; dropped image files go through [`EditorOptions::on_image`]
+//!   (read off the UI thread, at most 64 MB), other dropped files are
+//!   inserted as attachments linking to their path.
 //!   [`markdown::html_to_markdown`] converts rich text for hosts that read
 //!   HTML from the clipboard (GPUI has no HTML clipboard format).
 //! - **Extensions** style their marks, add input rules, click events and
@@ -154,9 +162,6 @@
 //! - All [`Command`]s. [`highlight`](MarkdownEditor::highlight),
 //!   [`scroll_to`](MarkdownEditor::scroll_to), [`EditorStyle`],
 //!   `first_line_is_title` and `max_width` are applied.
-//!
-//! Not yet: attachments ([`EditorEvent::AttachmentClicked`] is never
-//! emitted).
 
 pub mod command;
 mod edit;

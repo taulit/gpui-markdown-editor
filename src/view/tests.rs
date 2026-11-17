@@ -61,6 +61,7 @@ fn layout_input<'a>(doc: &'a Document, style: &'a EditorStyle) -> LayoutInput<'a
         column_widths: &NO_WIDTHS,
         image_preview: None,
         hidden: &NO_HIDDEN,
+        resolve_src: None,
     }
 }
 

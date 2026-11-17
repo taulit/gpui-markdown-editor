@@ -147,7 +147,10 @@ fn dropped_image_files_go_through_on_image(cx: &mut TestAppContext) {
     cx.simulate_event(FileDropEvent::Submit { position: at });
     cx.run_until_parked();
     assert_eq!(*received.lock().unwrap(), [(9, "image/png".to_string())]);
-    assert_eq!(md(&editor, cx), "Text\n\n![](assets/shot.png)\n");
+    // The text file becomes an attachment, the image follows it.
+    let md = md(&editor, cx);
+    assert!(md.starts_with("Text\n\n[notes.txt]("), "{md}");
+    assert!(md.ends_with(")\n\n![](assets/shot.png)\n"), "{md}");
     std::fs::remove_dir_all(&dir).ok();
 }
 

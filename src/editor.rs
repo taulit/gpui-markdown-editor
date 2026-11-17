@@ -418,6 +418,7 @@ impl MarkdownEditor {
             column_widths: &self.column_widths,
             image_preview: self.image_drag.as_ref().map(|d| (d.id, d.width)),
             hidden: &self.hidden,
+            resolve_src: self.options.resolve_src.as_ref(),
         }
     }
 

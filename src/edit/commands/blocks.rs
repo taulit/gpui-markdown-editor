@@ -410,6 +410,46 @@ impl EditorState {
         })
     }
 
+    /// Inserts a paragraph that is only a link to `url` showing `name` (an
+    /// attachment row) below the block at the caret, with the caret at its
+    /// end.
+    pub(crate) fn insert_attachment(&mut self, name: &str, url: &str) -> bool {
+        let Some(anchor) = self.insertion_anchor() else {
+            return false;
+        };
+        if name.is_empty() || url.is_empty() {
+            return false;
+        }
+        let content = Inline {
+            text: name.to_string(),
+            marks: vec![crate::model::MarkSpan {
+                range: 0..name.len(),
+                mark: crate::model::Mark::Link {
+                    url: url.to_string().into(),
+                    title: None,
+                },
+            }],
+        };
+        let end = name.len();
+        self.transact(EditKind::Other, None, "", move |tr, _| {
+            let block = tr.new_block(BlockKind::Paragraph, content);
+            let new = block.id;
+            let anchor_block = tr.block(anchor)?;
+            let reuse = anchor_block.kind == BlockKind::Paragraph
+                && anchor_block.content.text.is_empty()
+                && anchor_block.children.is_empty();
+            if reuse {
+                tr.insert_before(anchor, block)?;
+            } else {
+                tr.insert_after(anchor, block)?;
+            }
+            Ok(Selection::caret(TextPos {
+                block: new,
+                offset: end,
+            }))
+        })
+    }
+
     pub(crate) fn insert_rule(&mut self) -> bool {
         self.insert_node_block(BlockKind::Rule)
     }

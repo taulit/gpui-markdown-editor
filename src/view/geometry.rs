@@ -50,7 +50,7 @@ impl<'a> ViewQuery<'a> {
         Self { state, input, ts }
     }
 
-    fn layout(&mut self, ix: usize) -> Option<Arc<BlockLayout>> {
+    pub(crate) fn layout(&mut self, ix: usize) -> Option<Arc<BlockLayout>> {
         self.state.layout(&self.input, ix, self.ts)
     }
 
@@ -285,6 +285,24 @@ impl<'a> ViewQuery<'a> {
         layout.decorations.iter().find_map(|dec| match dec {
             Decoration::Checkbox { id, bounds, .. } if bounds.dilate(px(4.)).contains(&local) => {
                 Some(*id)
+            }
+            _ => None,
+        })
+    }
+
+    /// The attachment paragraph whose row is under `p`, outside its file
+    /// name (where a click places the caret).
+    pub fn attachment_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
+        let d = self.state.doc_point(p);
+        let ix = self.state.slot_at_y(d.y)?;
+        let layout = self.layout(ix)?;
+        let local = d - point(Pixels::ZERO, self.state.top_of(ix));
+        layout.decorations.iter().find_map(|dec| match dec {
+            Decoration::Attachment { id, bounds, .. } if bounds.contains(&local) => {
+                let on_text = layout
+                    .node(*id)
+                    .is_some_and(|(_, n)| n.bounds().contains(&local));
+                (!on_text).then_some(*id)
             }
             _ => None,
         })

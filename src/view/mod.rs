@@ -39,7 +39,9 @@ use crate::style::EditorStyle;
 
 pub(crate) use element::DocumentElement;
 pub(crate) use geometry::ViewQuery;
-pub(crate) use layout::MIN_COLUMN;
+#[cfg(test)]
+pub(crate) use layout::Decoration;
+pub(crate) use layout::{MIN_COLUMN, attachment_of};
 #[cfg(test)]
 pub(crate) use state::ViewStats;
 pub(crate) use table_ui::Affordance;
@@ -49,7 +51,7 @@ pub(crate) use table_ui::Affordance;
 const MAX_KEPT_IMAGES: usize = 48;
 
 /// What layout depends on.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub(crate) struct LayoutInput<'a> {
     pub document: &'a Document,
     pub style: &'a EditorStyle,
@@ -63,6 +65,9 @@ pub(crate) struct LayoutInput<'a> {
     pub image_preview: Option<(BlockId, u32)>,
     /// Top-level blocks inside folded sections: not laid out, zero height.
     pub hidden: &'a std::collections::HashSet<BlockId>,
+    /// [`EditorOptions::resolve_src`](crate::EditorOptions::resolve_src),
+    /// for the file size of attachments.
+    pub resolve_src: Option<&'a crate::options::SrcResolver>,
 }
 
 /// Column widths in pixels per table, see [`DocMeta`](crate::DocMeta).
