@@ -3,6 +3,49 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
+## [Unreleased]
+
+Table editing and images (phase E3, part 1).
+
+API changes:
+
+- Escape is bound in the key context `MarkdownEditor` (action `Cancel`). It
+  closes an open table menu and is passed on to the host otherwise.
+- Tables are as wide as their content (each column between 48 and 320 px)
+  instead of filling the content column.
+- `EditorEvent::MetaChanged` is emitted when the user resizes a table
+  column, and when tables with stored widths are added, removed or have
+  columns inserted, moved or removed. `set_meta` restores the widths.
+- `EditorOptions::resolve_src` and `EditorOptions::on_image` are called.
+
+What works:
+
+- Cell editing: clicks and Up/Down land in the cell under the pointer;
+  typing, marks and selection in cells as in paragraphs.
+- Cell rectangles: dragging across cells selects a rectangle; copy gives a
+  Markdown table of it, Delete and Backspace empty its cells in one undo
+  step, typing or pasting replaces the text of the anchor cell, arrows
+  collapse it.
+- Table structure: "+" bars below and right of the table append a row or
+  column; handles at the focused row and column open a menu (insert
+  before/after, move, delete, and alignment for columns). Every change is
+  one undo step.
+- Column widths: drag a column border; the width is kept in
+  `DocMeta::column_widths`, not in the Markdown.
+- Images: loaded asynchronously (local files through `resolve_src`,
+  absolute paths without a resolver, http(s) URLs), decoded and scaled down
+  to at most 1600 px off the UI thread, only near the viewport. Shown with
+  radius 12, scaled to fit the content width; the placeholder with the alt
+  text stays while loading and on failure. A selected image shows resize
+  handles; dragging one stores the width as `![alt|width](src)`.
+- Pasting image data calls `on_image` and inserts the returned source as an
+  image block.
+
+Fixed:
+
+- Clicking the left half of the last character of a line placed the caret
+  after it.
+
 ## [0.0.3]
 
 The editor edits the rendered document (WYSIWYG) instead of the Markdown

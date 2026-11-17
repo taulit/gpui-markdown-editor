@@ -77,8 +77,8 @@
 //!
 //! # Status
 //!
-//! Unreleased, phase E2: the document is edited in place (WYSIWYG). What
-//! works:
+//! Unreleased, phase E3 part 1: the document is edited in place (WYSIWYG).
+//! What works:
 //!
 //! - **Typing** with the Markdown input rules (`# `, `- `, `1. `, `[] `,
 //!   `> `, ` ``` `, `---`, `**x**`, `*x*`, `~~x~~`, `` `x` ``, `==x==`;
@@ -107,17 +107,33 @@
 //! - **History**: undo and redo, typing grouped by word. Undoing every edit
 //!   gives back the loaded text byte for byte; [`is_dirty`](MarkdownEditor::is_dirty)
 //!   follows the history, so undoing to the saved state is clean again.
+//! - **Tables**: caret, typing, marks and selection in cells; arrows, Tab,
+//!   Shift+Tab and Enter between cells. Dragging from one cell into another
+//!   selects a rectangle of cells: copy writes it as a Markdown table,
+//!   Delete empties its cells, typing replaces the text of the first cell.
+//!   Near a table or with the caret in it, "+" bars below and right of it
+//!   add a row or column, and handles at the focused row and column open a
+//!   menu to insert, move, delete and align. Columns are as wide as their
+//!   content (48 to 320 px), a table wider than the column is scaled down
+//!   and wraps. Dragging a column border sets its width, stored in
+//!   [`DocMeta::column_widths`] with [`EditorEvent::MetaChanged`].
+//! - **Images**: loaded asynchronously through
+//!   [`EditorOptions::resolve_src`] (absolute paths without a resolver,
+//!   http(s) URLs through GPUI), decoded and scaled down off the UI thread,
+//!   only near the viewport. Shown with radius 12 at their size (or the
+//!   width set for them) within the content width; the placeholder with the
+//!   alt text stays while loading and on failure. A selected image has
+//!   resize handles that store the width as `![alt|400](src)`. Pasted image
+//!   data goes through [`EditorOptions::on_image`].
 //! - All [`Command`]s except `FoldHeading` and `OpenFind`, which do nothing
 //!   yet. [`highlight`](MarkdownEditor::highlight),
 //!   [`scroll_to`](MarkdownEditor::scroll_to), [`EditorStyle`],
 //!   `first_line_is_title` and `max_width` are applied.
 //!
 //! Not yet: the UI parts of [`UiParts`] (format bar, slash menu, find bar,
-//! link popover), folding, table structure editing beyond Tab and Enter in
-//! cells, image loading (images show as placeholders), HTML and image paste,
-//! accessibility. The callbacks in [`EditorOptions`] are never called, and
-//! [`EditorEvent::MetaChanged`] and [`EditorEvent::AttachmentClicked`] are
-//! never emitted.
+//! link popover), folding, HTML paste, dragging blocks, accessibility.
+//! [`EditorOptions::completions`] and [`EditorOptions::slash_items`] are
+//! never called, and [`EditorEvent::AttachmentClicked`] is never emitted.
 
 pub mod command;
 mod edit;
