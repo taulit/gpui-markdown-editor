@@ -63,7 +63,7 @@ Cmd instead of Ctrl on macOS.
 |---|---|
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+Shift+X, Ctrl+E, Ctrl+Shift+H | Strikethrough, inline code, highlight |
-| Ctrl+K | Link (to the URL on the clipboard) or remove the link |
+| Ctrl+K | Add or edit a link (a URL on the clipboard is pre-filled) |
 | Ctrl+Alt+1 / 2 / 3, Ctrl+Alt+0 | Heading 1 to 3, plain text |
 | Ctrl+Shift+L, Ctrl+Enter | Checklist, tick or untick |
 | Tab, Shift+Tab | Indent, outdent; next and previous table cell |

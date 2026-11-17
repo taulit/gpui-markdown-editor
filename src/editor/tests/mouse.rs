@@ -269,6 +269,8 @@ fn a_pressed_checkbox_springs_to_its_press_scale_and_back(cx: &mut TestAppContex
         Some(super::super::press::PRESSED)
     );
 
+    // A long hold without frames must not make the release skip the spring.
+    cx.executor().advance_clock(Duration::from_secs(2));
     cx.simulate_event(MouseUpEvent {
         position: p,
         modifiers: Modifiers::none(),
@@ -276,7 +278,9 @@ fn a_pressed_checkbox_springs_to_its_press_scale_and_back(cx: &mut TestAppContex
         click_count: 1,
     });
     cx.executor().advance_clock(Duration::from_millis(40));
-    assert!(checkbox_scale(&editor, cx).is_some_and(|s| s > super::super::press::PRESSED));
+    assert!(
+        checkbox_scale(&editor, cx).is_some_and(|s| s > super::super::press::PRESSED && s < 1.)
+    );
     cx.executor().advance_clock(Duration::from_millis(1000));
     assert_eq!(checkbox_scale(&editor, cx), None);
     assert!(md(&editor, cx).contains("[x]"));

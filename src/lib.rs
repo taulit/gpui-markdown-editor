@@ -289,7 +289,7 @@
 //! |---|---|
 //! | Ctrl+B, Ctrl+I, Ctrl+U | Bold, italic, underline |
 //! | Ctrl+Shift+X, Ctrl+E, Ctrl+Shift+H | Strikethrough, inline code, highlight |
-//! | Ctrl+K | Link the selection to the URL on the clipboard, or remove the link |
+//! | Ctrl+K | Open the link prompt for the selection or the link at the caret (a URL on the clipboard is pre-filled) |
 //! | Ctrl+Alt+1 / 2 / 3, Ctrl+Alt+0 | Heading 1 to 3, plain text |
 //! | Ctrl+Shift+L, Ctrl+Enter | Checklist, tick or untick |
 //! | Tab, Shift+Tab | Indent, outdent (next cell in tables) |

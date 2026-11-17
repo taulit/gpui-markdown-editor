@@ -43,6 +43,9 @@ impl MarkdownEditor {
     pub(super) fn release_checkbox(&mut self, cx: &mut Context<Self>) {
         if let Some(press) = &mut self.checkbox_press {
             press.target = 1.;
+            // No frames are drawn while the spring rests at the press scale,
+            // so the next step would otherwise cover the whole hold.
+            press.updated = cx.background_executor().now();
             cx.notify();
         }
     }
