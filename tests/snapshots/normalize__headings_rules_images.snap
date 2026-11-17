@@ -1,0 +1,21 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        Setext one\n        ===\n\n        Setext\n        two\n        ---\n\n        ### closed ###\n\n        # trailing hash \\\\#\n\n        #\n\n        * * *\n        ___\n\n        ![alt text](img.png 'Title')\n\n        ![photo_1|300](<my photos/photo 1.png>)\n    \"})"
+---
+# Setext one
+
+## Setext two
+
+### closed
+
+# trailing hash \#
+
+#
+
+---
+
+---
+
+![alt text](img.png "Title")
+
+![photo_1|300](<my photos/photo 1.png>)

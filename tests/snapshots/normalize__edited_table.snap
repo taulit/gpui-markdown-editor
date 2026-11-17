@@ -1,0 +1,19 @@
+---
+source: tests/normalize.rs
+expression: "edited(source, &[1])"
+---
+before
+
+|a|b|
+|-|:-:|
+|1|2|
+after
+⏎
+======== edited [1]
+before
+
+| a     |  b  |
+| ----- | :-: |
+| 1     |  2  |
+| after |     |
+⏎

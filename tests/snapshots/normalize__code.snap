@@ -1,0 +1,28 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        `a` ``b`c`` `` ` `` ` d ` ``` `` ```\n\n        ~~~rust\n        fn main() {}\n        ~~~\n\n        ````\n        ```\n        inner fence\n        ```\n        ````\n\n            indented\n\n            code\n\n        ```\n        ```\n\n        ~~~ a`b\n        info with backtick\n        ~~~\n    \"})"
+---
+`a` ``b`c`` `` ` `` `d` ``` `` ```
+
+```rust
+fn main() {}
+```
+
+````
+```
+inner fence
+```
+````
+
+```
+indented
+
+code
+```
+
+```
+```
+
+~~~a`b
+info with backtick
+~~~

@@ -1,0 +1,22 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        > first paragraph\n        continues lazily\n        >\n        > second paragraph\n        > - item\n        >   - nested\n        >\n        > > nested quote\n        >\n        >     code\n\n        >\n\n        > # heading first\n        > text\n    \"})"
+---
+> first paragraph continues lazily
+>
+> second paragraph
+>
+> - item
+>   - nested
+>
+> > nested quote
+>
+> ```
+> code
+> ```
+
+>
+
+> # heading first
+>
+> text
