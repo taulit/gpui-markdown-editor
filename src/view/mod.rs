@@ -102,6 +102,8 @@ pub(crate) struct ViewInput<'a> {
     pub drag_handles: bool,
     /// The slot being dragged and the gap it would be dropped at.
     pub block_drag: Option<(usize, Option<usize>)>,
+    /// A pressed checkbox and its scale around its center.
+    pub checkbox_scale: Option<(BlockId, f32)>,
 }
 
 /// An entity a [`DocumentElement`] can render. The element routes text

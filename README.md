@@ -1,39 +1,104 @@
 # gpui-markdown-editor
 
-WYSIWYG Markdown editor component for GPUI (Zed's UI framework)
+WYSIWYG Markdown editor component for GPUI (Zed's UI framework) – lossless round-trip, tables, checklists, images.
 
-`gpui-markdown-editor` is an editor component that shows Markdown as formatted text while you type. Documents round-trip losslessly: what you load is what gets saved, byte for byte, unless you edited it. It feels like Apple Notes or Notion, with no visible `**` or `#` markers, and it is built for [gpui-component](https://github.com/longbridge/gpui-component).
+<p>
+  <img src="docs/screenshots/e2-note-light.png" alt="A note in the editor, light theme" width="49%">
+  <img src="docs/screenshots/e2-note-dark.png" alt="The same note, dark theme" width="49%">
+</p>
 
-## Status
-
-Early development. The API is unstable until 0.1. Changes between tags are listed in [CHANGELOG.md](CHANGELOG.md); current progress is in [docs/STATUS.md](docs/STATUS.md).
+`gpui-markdown-editor` shows Markdown as formatted text while you type, like Apple Notes or Notion: no visible `**` or `#`, input rules turn `# ` into a heading and `[] ` into a checkbox. Files round-trip losslessly: what you load is saved byte for byte unless you edit it, and edited blocks are written in one consistent style. It is built for [gpui-component](https://github.com/longbridge/gpui-component) and uses its theme and widgets.
 
 ## Features
 
-- Lossless Markdown (CommonMark, GFM tables, task lists, strikethrough): unedited blocks are written back byte for byte.
-- WYSIWYG editing with Markdown input rules (`# `, `- `, `[] `, `**bold**`, ...), undo grouped by words, IME support.
-- Tables with cell editing, row and column menus, resizable columns; images loaded asynchronously and resizable.
-- Format bar, slash menu, link popover, find bar (Ctrl/Cmd+F) and completions for wiki links and tags, each switchable with `UiParts`.
-- Folding of headings and block drag and drop; folds and column widths are kept as host metadata (`DocMeta`).
-- Extensions for custom inline syntax with parser, serializer, style, input rule, click event and slash entries; wiki links, tags and highlights ship with the crate.
+- Lossless Markdown (CommonMark, GFM tables, task lists, strikethrough): unedited blocks are written back byte for byte, unknown syntax is kept as raw blocks.
+- WYSIWYG editing with Markdown input rules (`# `, `- `, `1. `, `[] `, `> `, ` ``` `, `---`, `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `==highlight==`), undo grouped by words, IME support.
+- Tables with cell editing, rectangle selection, row and column menus and keys, resizable columns.
+- Images loaded asynchronously and resizable; attachments for links to local files.
+- Format bar, slash menu, link popover, find bar and completions for wiki links and tags, each switchable.
+- Heading folding and block drag and drop; folds and column widths are kept outside the Markdown (`DocMeta`).
+- Extensions for custom inline syntax (parser, serializer, style, input rule, click event, slash entries); wiki links, tags and highlights ship with the crate.
+- A window-free document model for headless use: outline, tasks, tags, rewriting.
 - HTML to Markdown conversion for rich text (`markdown::html_to_markdown`).
-- Accessibility roles through AccessKit; every popup works with the keyboard.
+- Accessibility roles through AccessKit; every popup works with the keyboard; motion follows GPUI's reduced-motion setting.
 
-## Usage
+## Install
+
+Not on crates.io yet. Depend on a git tag:
 
 ```toml
 [dependencies]
 gpui-markdown-editor = { git = "https://github.com/taulit/gpui-markdown-editor", tag = "v0.0.4" }
 ```
 
-This crate pins `gpui-pre =0.3.12` and `gpui-component =0.10.0`. Host applications must use the same versions.
+## Quick start
 
-## Building
+```rust
+use gpui::{AppContext as _, Context, Entity, Window};
+use gpui_markdown_editor::{EditorEvent, EditorOptions, MarkdownEditor};
 
-```sh
-cargo run --example basic
-cargo test
+fn new_editor(window: &mut Window, cx: &mut Context<Note>) -> Entity<MarkdownEditor> {
+    // Once at startup: gpui_component::init(cx); gpui_markdown_editor::init(cx);
+    let editor = cx.new(|cx| MarkdownEditor::new(window, cx, EditorOptions::default()));
+    editor.update(cx, |editor, cx| editor.set_markdown("# Hello\n\n- [ ] try it\n", cx));
+    cx.subscribe(&editor, |_, editor, event: &EditorEvent, cx| {
+        if *event == EditorEvent::Changed {
+            let markdown = editor.read(cx).markdown(); // save it, then `mark_saved`
+        }
+    })
+    .detach();
+    editor
+}
 ```
+
+Render the entity as a child of your view. Complete programs: `cargo run --example basic` (minimal), `cargo run --example notes` (every feature), `cargo run --example headless` (no window). The [crate documentation](https://docs.rs/gpui-markdown-editor) (`cargo doc --open`) covers options, commands, extensions, `DocMeta`, images and key rebinding.
+
+## Shortcuts
+
+Cmd instead of Ctrl on macOS.
+
+| Keys | Action |
+|---|---|
+| Ctrl+B / I / U | Bold, italic, underline |
+| Ctrl+Shift+X, Ctrl+E, Ctrl+Shift+H | Strikethrough, inline code, highlight |
+| Ctrl+K | Link (to the URL on the clipboard) or remove the link |
+| Ctrl+Alt+1 / 2 / 3, Ctrl+Alt+0 | Heading 1 to 3, plain text |
+| Ctrl+Shift+L, Ctrl+Enter | Checklist, tick or untick |
+| Tab, Shift+Tab | Indent, outdent; next and previous table cell |
+| Alt+Up / Down | Move the block (the row in a table) |
+| Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y | Undo, redo |
+| Ctrl+F, F3, Shift+F3 | Find, next, previous |
+| Ctrl+. | Fold the heading's section |
+| `/` | Slash menu |
+| Ctrl+Alt+arrows | Insert a table row or column |
+| Shift+F10 | Table row and column menu |
+
+All bindings live in the key context `MarkdownEditor` and can be rebound by the host.
+
+## Compared with gpui-component's editor
+
+| | gpui-component `Input` / code editor | gpui-component `TextView::markdown` | gpui-markdown-editor |
+|---|---|---|---|
+| Edits | plain text and code (the Markdown source) | nothing, display only | formatted text (WYSIWYG) |
+| Markdown | shown as source, with Tree-sitter highlighting | rendered | rendered while editing, saved losslessly |
+| Made for | forms, code, large files with LSP | showing documents and chat messages | notes and documents |
+
+Use gpui-component's code editor to edit Markdown as text, its `TextView` to display it, and this crate to let people write formatted notes that stay Markdown on disk.
+
+## Performance
+
+Typing stays within a few milliseconds per keystroke in a 10,000-block document; parse and layout numbers against the budgets are in [docs/performance.md](docs/performance.md).
+
+## Versions
+
+| | |
+|---|---|
+| gpui | `gpui-pre =0.3.12` |
+| gpui-component | `=0.10.0` |
+| Application platform | `gpui-pre-platform =0.3.12` |
+| Rust | edition 2024, MSRV 1.95 |
+
+Host applications must use the same gpui and gpui-component versions. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

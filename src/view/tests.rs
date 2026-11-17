@@ -90,6 +90,7 @@ fn input<'a>(
         folded: &NO_HIDDEN,
         drag_handles: false,
         block_drag: None,
+        checkbox_scale: None,
     }
 }
 

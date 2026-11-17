@@ -72,101 +72,315 @@
 //! | Feature | Default | Effect |
 //! |---|---|---|
 //! | `ui` | yes | The built-in UI parts selected with [`UiParts`]: format bar, slash menu, find bar, link popover. |
-//! | `paste-html` | yes | Converts HTML from the clipboard into document blocks on paste. |
+//! | `paste-html` | yes | Converts HTML from the clipboard into document blocks on paste, and [`markdown::html_to_markdown`]. |
 //! | `serde` | no | `Serialize` and `Deserialize` for [`DocMeta`]. |
 //!
-//! # Status
+//! # Loading, saving and events
 //!
-//! Unreleased, phase E3: the document is edited in place (WYSIWYG).
-//! What works:
+//! [`set_markdown`](MarkdownEditor::set_markdown) replaces the content,
+//! clears the undo history and leaves the editor clean;
+//! [`markdown`](MarkdownEditor::markdown) returns the current text.
+//! [`is_dirty`](MarkdownEditor::is_dirty) follows the history (undoing back
+//! to the saved state is clean again); call
+//! [`mark_saved`](MarkdownEditor::mark_saved) after writing the file.
 //!
-//! - **Typing** with the Markdown input rules (`# `, `- `, `1. `, `[] `,
-//!   `> `, ` ``` `, `---`, `**x**`, `*x*`, `~~x~~`, `` `x` ``, `==x==`;
-//!   Backspace right after a rule undoes it), Enter and Shift+Enter, Tab and
-//!   Shift+Tab in lists, code blocks and table cells.
-//! - **Shortcuts** (Cmd instead of Ctrl on macOS): Ctrl+B/I/U, Ctrl+Shift+X
-//!   strike, Ctrl+E code, Ctrl+Shift+H highlight, Ctrl+K link (links to the
-//!   URL on the clipboard or removes the link), Ctrl+Shift+L checklist,
-//!   Ctrl+Alt+1..3 headings, Ctrl+Alt+0 text, Ctrl+Enter checkbox, Alt+Up/Down
-//!   move block, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y, Ctrl+A (block, then
-//!   document), Ctrl+C/X/V.
-//! - **Caret movement** with arrows, Ctrl+arrows (Alt on macOS) by words,
-//!   Home/End by visual lines, Ctrl+Home/End, PageUp/PageDown, all with Shift
-//!   to select, across blocks. Up and Down keep the column. Backspace and
-//!   Delete, with Ctrl by words.
-//! - **Mouse**: click, Shift+click, drag (scrolling at the edges), double
-//!   click selects a word, triple click a block; a click on a checkbox
-//!   toggles it, on a rule or image selects it. Ctrl+click (Cmd+click) on a
-//!   link, wiki link or tag emits its event; a plain click places the caret.
-//! - **IME** through GPUI's input handler: marked text is underlined, the
-//!   candidate window follows the caret, stale ranges from the input method
-//!   are clamped.
-//! - **Clipboard**: copy and cut write the selection as Markdown text. Paste
-//!   inserts Markdown as blocks and other text as plain text; a URL pasted
-//!   over selected text links it.
-//! - **History**: undo and redo, typing grouped by word. Undoing every edit
-//!   gives back the loaded text byte for byte; [`is_dirty`](MarkdownEditor::is_dirty)
-//!   follows the history, so undoing to the saved state is clean again.
-//! - **Tables**: caret, typing, marks and selection in cells; arrows, Tab,
-//!   Shift+Tab and Enter between cells. Dragging from one cell into another
-//!   selects a rectangle of cells: copy writes it as a Markdown table,
-//!   Delete empties its cells, typing replaces the text of the first cell.
-//!   Near a table or with the caret in it, "+" bars below and right of it
-//!   add a row or column, and handles at the focused row and column open a
-//!   menu to insert, move, delete and align. With the caret in a cell
-//!   (Cmd instead of Ctrl on macOS): Ctrl+Alt+Up/Down insert a row
-//!   above/below, Ctrl+Alt+Left/Right a column left/right,
-//!   Ctrl+Alt+Shift+Left/Right move the column, Alt+Up/Down move the row,
-//!   Ctrl+Alt+Backspace deletes the row, Ctrl+Alt+Shift+Backspace the
-//!   column, and Shift+F10 opens the row menu at the cell (pressed again,
-//!   the column menu); these bindings use the key context
-//!   `MarkdownEditor && table`. Columns are as wide as their
-//!   content (48 to 320 px), a table wider than the column is scaled down
-//!   and wraps; a column of numbers without an alignment is right-aligned,
-//!   with tabular figures. Dragging a column border sets its width, stored
-//!   in [`DocMeta::column_widths`] with [`EditorEvent::MetaChanged`]; widths
-//!   follow column edits and their undo.
-//! - **Images**: loaded asynchronously through
-//!   [`EditorOptions::resolve_src`] (absolute paths without a resolver,
-//!   http(s) URLs through GPUI's HTTP client), regular files and downloads
-//!   of at most 64 MB, decoded (at most 16384 px a side) and scaled down
-//!   off the UI thread,
-//!   only near the viewport. Shown with radius 12 at their size (or the
-//!   width set for them) within the content width; the placeholder with the
-//!   alt text stays while loading and on failure. A selected image has
-//!   resize handles that store the width as `![alt|400](src)`. Pasted image
-//!   data goes through [`EditorOptions::on_image`].
-//! - **UI parts** ([`UiParts`]): the format bar at the bottom adapts to the
-//!   selection and opens the style popover; the slash menu (`/`) inserts
-//!   block types, extension and host entries; the link popover edits links
-//!   and a bubble at a link offers open, edit, remove; the find bar (Ctrl+F)
-//!   counts and steps through matches; `[[` and `#` open the host's
-//!   [completions](EditorOptions::completions). All work with the keyboard.
-//! - **Folding**: the chevron left of a heading (or Ctrl+.) folds its
-//!   section; folded blocks are not laid out and the caret skips them. An
-//!   edit that would hide visible content unfolds the section instead. The
-//!   state is [`DocMeta::folded_headings`].
-//! - **Attachments** (plan §9): a paragraph that is only a link to a local
-//!   file that is not an image (`[Report.pdf](files/report.pdf)`) is drawn
-//!   as a row with a file icon, the link text as name and the file size
-//!   (when [`EditorOptions::resolve_src`] resolves it). A click on the row
-//!   outside the name, or Ctrl+click (Cmd+click) on the name, emits
-//!   [`EditorEvent::AttachmentClicked`]; a plain click on the name edits it.
-//! - **Drag and drop**: a handle left of a block moves it with its
-//!   children; dropped image files go through [`EditorOptions::on_image`]
-//!   (read off the UI thread, at most 64 MB), other dropped files are
-//!   inserted as attachments linking to their path.
-//!   [`markdown::html_to_markdown`] converts rich text for hosts that read
-//!   HTML from the clipboard (GPUI has no HTML clipboard format).
-//! - **Extensions** style their marks, add input rules, click events and
-//!   slash entries, see [`Extension`].
-//! - **Accessibility**: the document and its visible blocks are AccessKit
-//!   nodes with roles (heading levels, checkbox states); popups have roles
-//!   and labels. The caret and selected text are not reported (GPUI's
-//!   synthetic nodes are leaves).
-//! - All [`Command`]s. [`highlight`](MarkdownEditor::highlight),
-//!   [`scroll_to`](MarkdownEditor::scroll_to), [`EditorStyle`],
-//!   `first_line_is_title` and `max_width` are applied.
+//! The editor reports through [`EditorEvent`]: `Changed` after every edit
+//! (debounce it before saving), `SelectionChanged`, `MetaChanged` when
+//! [`DocMeta`] changed, and click events for links, wiki links, tags and
+//! attachments. Clicks only report; opening anything is up to the host.
+//! Links fire on Ctrl+click (Cmd+click on macOS) so that a plain click can
+//! place the caret.
+//!
+//! # Options
+//!
+//! [`EditorOptions`] is fixed at creation:
+//!
+//! - `first_line_is_title` draws the first paragraph as a title (display
+//!   only), `max_width` limits the centered content column (default 700 px).
+//! - `extensions` adds custom inline syntax, see below.
+//! - `resolve_src` maps image and attachment sources to files, `on_image`
+//!   stores pasted or dropped image data, see [Images and
+//!   attachments](#images-and-attachments).
+//! - `completions` suggests targets after `[[` and `#`; `slash_items` adds
+//!   host entries to the slash menu.
+//! - `ui` switches the built-in [`UiParts`] on or off, to replace them with
+//!   your own UI driven by commands.
+//!
+//! Colors and sizes come from [`EditorStyle`]; [`EditorStyle::from_theme`]
+//! derives them from the active gpui-component theme, and
+//! [`set_style`](MarkdownEditor::set_style) applies a new one (call it
+//! again when the theme changes).
+//!
+//! # Commands
+//!
+//! Everything the toolbar and the keys do is available as a [`Command`] for
+//! host UI, menus and scripts:
+//!
+//! ```no_run
+//! # use gpui::{Context, Entity, Window};
+//! # use gpui_markdown_editor::{BlockKind, Command, Mark, MarkdownEditor};
+//! # fn run(editor: &Entity<MarkdownEditor>, window: &mut Window, cx: &mut gpui::App) {
+//! editor.update(cx, |editor, cx| {
+//!     editor.command(Command::ToggleMark(Mark::Bold), window, cx);
+//!     editor.command(Command::SetBlock(BlockKind::Heading(2)), window, cx);
+//!     editor.command(Command::InsertMarkdown("- [ ] new task\n".into()), window, cx);
+//! });
+//! # }
+//! ```
+//!
+//! Commands are part of the undo history and emit `Changed` like typing.
+//! Besides commands, the editor offers [`find`](MarkdownEditor::find),
+//! [`highlight`](MarkdownEditor::highlight),
+//! [`scroll_to`](MarkdownEditor::scroll_to) and
+//! [`word_count`](MarkdownEditor::word_count).
+//!
+//! # Extensions
+//!
+//! An [`Extension`] adds inline syntax: it finds it in text, writes it
+//! back, styles it, completes it while typing, reports clicks and adds slash
+//! entries. All hooks have defaults. The crate ships
+//! [`WikiLink`](extensions::WikiLink) (`[[Note]]`, `[[Note|Alias]]`),
+//! [`Tag`](extensions::Tag) (`#tag`) and
+//! [`Highlight`](extensions::Highlight) (`==text==`).
+//!
+//! A complete extension for `@mentions`:
+//!
+//! ```
+//! use gpui::FontWeight;
+//! use gpui_markdown_editor::extension::{Extension, InlineMatch, MarkColor, MarkStyle};
+//! use gpui_markdown_editor::{CustomMarkId, Document, EditorEvent, Extensions, Mark};
+//!
+//! struct Mention;
+//!
+//! impl Mention {
+//!     const MARK: CustomMarkId = CustomMarkId("mention");
+//!
+//!     fn mark() -> Mark {
+//!         Mark::Custom { id: Self::MARK, attr: None }
+//!     }
+//! }
+//!
+//! impl Extension for Mention {
+//!     fn name(&self) -> &'static str {
+//!         "mention"
+//!     }
+//!
+//!     // `@` followed by letters, at the start or after a space.
+//!     fn parse_inline(&self, text: &str) -> Vec<InlineMatch> {
+//!         let mut found = Vec::new();
+//!         for (at, _) in text.match_indices('@') {
+//!             if at > 0 && !text[..at].ends_with(' ') {
+//!                 continue;
+//!             }
+//!             let len = text[at + 1..]
+//!                 .find(|c: char| !c.is_alphanumeric())
+//!                 .unwrap_or(text.len() - at - 1);
+//!             if len > 0 {
+//!                 let range = at..at + 1 + len;
+//!                 found.push(InlineMatch {
+//!                     text: text[range.clone()].to_string(),
+//!                     range,
+//!                     mark: Self::mark(),
+//!                 });
+//!             }
+//!         }
+//!         found
+//!     }
+//!
+//!     fn serialize_mark(&self, mark: &Mark, text: &str) -> Option<String> {
+//!         (*mark == Self::mark()).then(|| text.to_string())
+//!     }
+//!
+//!     fn mark_style(&self, id: CustomMarkId) -> Option<MarkStyle> {
+//!         (id == Self::MARK).then(|| MarkStyle::new().color(MarkColor::Link).weight(FontWeight::MEDIUM))
+//!     }
+//!
+//!     // Ctrl/Cmd+click on a mention reports it as a link.
+//!     fn click(&self, mark: &Mark, text: &str) -> Option<EditorEvent> {
+//!         (*mark == Self::mark()).then(|| EditorEvent::LinkClicked(format!("mention:{}", &text[1..])))
+//!     }
+//! }
+//!
+//! let source = "Ask @anna about it.\n";
+//! let doc = Document::parse_with(source, Extensions::new(vec![Box::new(Mention)]));
+//! let marks = doc.blocks()[0].content().marks();
+//! assert_eq!(marks[0].mark, Mention::mark());
+//! assert_eq!(doc.to_markdown(), source);
+//! assert_eq!(doc.normalized(), source);
+//! ```
+//!
+//! Pass extensions in [`EditorOptions::extensions`]; earlier ones win when
+//! matches overlap. Extensions add marks only: they cannot add inline nodes
+//! or block renderers.
+//!
+//! # Presentation state: `DocMeta`
+//!
+//! Table column widths and folded headings are not Markdown. The editor
+//! keeps them in [`DocMeta`] and emits [`EditorEvent::MetaChanged`] when
+//! the user changes them; the host stores them next to the file and hands
+//! them back after loading:
+//!
+//! ```no_run
+//! # use gpui::{Context, Entity};
+//! # use gpui_markdown_editor::{DocMeta, EditorEvent, MarkdownEditor};
+//! # struct Host { stored: DocMeta }
+//! # impl Host {
+//! fn open(&mut self, editor: &Entity<MarkdownEditor>, text: &str, cx: &mut Context<Self>) {
+//!     let meta = self.stored.clone(); // read from a sidecar file or database
+//!     editor.update(cx, |editor, cx| {
+//!         editor.set_markdown(text, cx);
+//!         editor.set_meta(meta, cx);
+//!     });
+//!     cx.subscribe(editor, |host, editor, event: &EditorEvent, cx| {
+//!         if *event == EditorEvent::MetaChanged {
+//!             host.stored = editor.read(cx).meta().clone(); // write it back
+//!         }
+//!     })
+//!     .detach();
+//! }
+//! # }
+//! ```
+//!
+//! Entries are keyed by the position of the table or heading in the
+//! document, so they survive reloads; entries past the end are ignored.
+//! With the `serde` feature `DocMeta` serializes, with missing fields
+//! defaulting.
+//!
+//! # Images and attachments
+//!
+//! An image (`![alt](src)`, optionally `![alt|400](src)` for a width) loads
+//! asynchronously when it comes near the viewport.
+//! [`EditorOptions::resolve_src`] maps `src` as written (usually a path
+//! relative to the note) to a file; without a resolver only absolute paths
+//! load. `http(s)` sources load through GPUI's HTTP client. Files and
+//! downloads over 64 MB and images over 16384 px a side are refused; the
+//! placeholder with the alt text stays while loading and on failure.
+//!
+//! Pasted or dropped image data goes to [`EditorOptions::on_image`], which
+//! stores the bytes and returns the source to insert:
+//!
+//! ```
+//! use std::sync::Arc;
+//! use gpui_markdown_editor::{EditorOptions, ImageHandler};
+//!
+//! let on_image: ImageHandler = Arc::new(|bytes: Vec<u8>, mime: &str| {
+//!     let ext = mime.strip_prefix("image/").unwrap_or("png");
+//!     let name = format!("attachments/pasted-{}.{ext}", bytes.len());
+//!     // std::fs::write(note_dir.join(&name), bytes).ok()?;
+//!     Some(name)
+//! });
+//! let options = EditorOptions { on_image: Some(on_image), ..Default::default() };
+//! # let _ = options;
+//! ```
+//!
+//! A paragraph that is only a link to a local file that is not an image
+//! (`[Report.pdf](files/report.pdf)`) is drawn as an attachment row with
+//! the file size (when `resolve_src` finds the file); clicking it emits
+//! [`EditorEvent::AttachmentClicked`]. Dropped files that are not images
+//! are inserted that way.
+//!
+//! # Keys
+//!
+//! Cmd instead of Ctrl on macOS. The bindings live in the key context
+//! `MarkdownEditor`; table bindings in `MarkdownEditor && table` (caret in
+//! a cell).
+//!
+//! | Keys | Action |
+//! |---|---|
+//! | Ctrl+B, Ctrl+I, Ctrl+U | Bold, italic, underline |
+//! | Ctrl+Shift+X, Ctrl+E, Ctrl+Shift+H | Strikethrough, inline code, highlight |
+//! | Ctrl+K | Link the selection to the URL on the clipboard, or remove the link |
+//! | Ctrl+Alt+1 / 2 / 3, Ctrl+Alt+0 | Heading 1 to 3, plain text |
+//! | Ctrl+Shift+L, Ctrl+Enter | Checklist, tick or untick |
+//! | Tab, Shift+Tab | Indent, outdent (next cell in tables) |
+//! | Alt+Up, Alt+Down | Move the block (the row in tables) |
+//! | Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y | Undo, redo |
+//! | Ctrl+A | Select the block, then the document |
+//! | Ctrl+C, Ctrl+X, Ctrl+V | Copy and cut as Markdown, paste |
+//! | Ctrl+F, F3, Shift+F3 | Find, next and previous match |
+//! | Ctrl+. | Fold or unfold the heading's section |
+//! | Shift+Enter | Line break in the block |
+//! | Ctrl+arrows (Alt on macOS), Home/End, Ctrl+Home/End, PageUp/PageDown | Move by words, lines, document, pages; with Shift to select |
+//! | Ctrl+Alt+Up / Down / Left / Right | Insert a table row above/below, a column left/right |
+//! | Ctrl+Alt+Shift+Left / Right | Move the table column |
+//! | Ctrl+Alt+Backspace, Ctrl+Alt+Shift+Backspace | Delete the table row, the column |
+//! | Shift+F10 | Row menu, pressed again the column menu |
+//!
+//! Markdown input rules: `# ` to `###### `, `- ` or `* `, `1. `, `[] ` or
+//! `- [ ] `, `> `, ` ``` `, `---`, and `**x**`, `*x*`, `~~x~~`, `` `x` ``,
+//! `==x==` around text. Backspace right after a rule undoes it.
+//!
+//! The actions are named `markdown_editor::<Name>` (for example
+//! `markdown_editor::ToggleBold`). A host rebinds a key by binding an action
+//! by name in the same context after [`init`]; later bindings win, and
+//! [`gpui::NoAction`] removes a default:
+//!
+//! ```no_run
+//! use std::rc::Rc;
+//! use gpui::{App, KeyBinding, KeyBindingContextPredicate, NoAction};
+//!
+//! fn rebind(cx: &mut App) {
+//!     gpui_component::init(cx);
+//!     gpui_markdown_editor::init(cx);
+//!     let context = KeyBindingContextPredicate::parse("MarkdownEditor").ok().map(Rc::new);
+//!     let bold = cx.build_action("markdown_editor::ToggleBold", None).unwrap();
+//!     let binding = KeyBinding::load("ctrl-shift-b", bold, context, false, None, cx).unwrap();
+//!     cx.bind_keys([
+//!         binding,
+//!         KeyBinding::new("ctrl-b", NoAction, Some("MarkdownEditor")),
+//!     ]);
+//! }
+//! ```
+//!
+//! # Markdown round trip
+//!
+//! - **Lossless:** opening and saving without edits gives the same bytes,
+//!   including line endings, trailing whitespace, a BOM and front matter.
+//!   This is tested on the CommonMark and GFM spec examples and a corpus of
+//!   notes.
+//! - **Unknown syntax is kept:** constructs the editor does not model (HTML
+//!   blocks, footnotes, math, definition lists) are
+//!   raw blocks or raw spans, shown as their source and written back
+//!   unchanged.
+//! - **Edited blocks are normalized**, unedited neighbours are not: ATX
+//!   headings, `-` bullets (an edited item keeps its list's marker), `1.`
+//!   numbers, `- [ ]` / `- [x]` tasks, `**bold**`, `*italic*`,
+//!   `~~strike~~`, `` `code` ``, `==highlight==`, `<u>underline</u>`,
+//!   fenced code, padded and aligned tables, one blank line between blocks.
+//!   Characters are escaped only where they would be read as syntax. See
+//!   [`Document::to_markdown`].
+//! - **Undo is exact:** undoing every edit gives back the loaded text byte
+//!   for byte.
+//! - An empty paragraph between blocks is written as `&#32;` (Markdown has
+//!   no empty paragraph), and an edited hard-wrapped paragraph is written on
+//!   one line.
+//!
+//! # Headless use
+//!
+//! [`Document`] needs no window: parse a note, read its outline, open tasks
+//! or tags, and write it back. See `examples/headless.rs`.
+//!
+//! # Motion
+//!
+//! Popups fade and slide in over 250 ms, and a pressed checkbox springs to
+//! 85 % of its size. Both follow GPUI's reduced-motion switch: with
+//! [`App::set_reduce_motion`](gpui::App::set_reduce_motion) set, they show
+//! their end state at once. While nothing animates, no frames are requested.
+//!
+//! # Known limits (0.1)
+//!
+//! - GPUI exposes no HTML clipboard format, so paste never sees rich text;
+//!   [`markdown::html_to_markdown`] is there for hosts that get HTML
+//!   elsewhere.
+//! - Accessibility: the document, blocks and popups are AccessKit nodes with
+//!   roles, but the caret and the selected text are not reported.
+//! - Folding and block drag work on top-level blocks only.
+//! - Extensions add marks, not inline nodes or block renderers.
+//! - Up and Down skip rules and images (Left and Right select them).
+//! - Enter in a quote starts a new quote paragraph rather than leaving it.
+//! - Input methods are tested in simulation; dead keys, Compose and ibus
+//!   have not been checked on every desktop.
+//! - Performance: see `docs/performance.md` for the measured budgets.
 
 #[doc(hidden)]
 pub mod bench;
@@ -197,3 +411,4 @@ pub use options::{
     SlashItem, SrcResolver, UiParts,
 };
 pub use style::EditorStyle;
+#[cfg(test)] mod prof_tmp;

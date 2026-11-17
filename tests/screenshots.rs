@@ -649,6 +649,8 @@ fn capture_with_keys(
         gpui_component::init(cx);
         gpui_markdown_editor::init(cx);
         apply_sheaf_theme(mode, cx);
+        // Popups and checkboxes animate; a screenshot shows their end state.
+        cx.set_reduce_motion(true);
     });
 
     let window = cx

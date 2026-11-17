@@ -490,7 +490,7 @@ impl MarkdownEditor {
                 anchored()
                     .position(menu.position + point(px(0.), px(6.)))
                     .snap_to_window_with_margin(px(8.))
-                    .child(panel),
+                    .child(super::ui::appear(panel, "table-menu", false)),
             )
             .with_priority(1)
             .into_any_element(),

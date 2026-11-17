@@ -12,7 +12,7 @@ use gpui::{
 };
 
 use super::super::MarkdownEditor;
-use super::{Palette, menu_panel, menu_row, overlay, place, wrap};
+use super::{Palette, appear, menu_panel, menu_row, overlay, place, wrap};
 use crate::command::Command;
 use crate::edit::Selection;
 use crate::edit::order;
@@ -446,7 +446,7 @@ impl MarkdownEditor {
                     .child("No matching blocks"),
             )
         });
-        Some(overlay(position, list))
+        Some(overlay(position, appear(list, "slash-menu", false)))
     }
 }
 

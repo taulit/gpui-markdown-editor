@@ -21,7 +21,7 @@ use super::super::MarkdownEditor;
 use super::super::keys::{
     CloseFind, FIND_CONTEXT, FindNext, FindPrevious, OpenFind, ToggleFindCase,
 };
-use super::{MARGIN, Palette, overlay, panel, tool_button};
+use super::{MARGIN, Palette, appear, overlay, panel, tool_button};
 use crate::edit::Selection;
 use crate::model::{TextPos, TextRange};
 
@@ -317,6 +317,6 @@ impl MarkdownEditor {
                         cx.listener(|this, _, window, cx| this.close_find(false, window, cx)),
                     ),
             );
-        Some(overlay(gpui::point(x, px(10.)), bar))
+        Some(overlay(gpui::point(x, px(10.)), appear(bar, "find-bar", false)))
     }
 }

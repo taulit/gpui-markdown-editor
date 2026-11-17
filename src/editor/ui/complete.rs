@@ -13,7 +13,7 @@ use gpui::{
 };
 
 use super::super::MarkdownEditor;
-use super::{Palette, menu_panel, menu_row, overlay, place, wrap};
+use super::{Palette, appear, menu_panel, menu_row, overlay, place, wrap};
 use crate::edit::Selection;
 use crate::edit::history::EditKind;
 use crate::extensions::{Tag, WikiLink};
@@ -255,6 +255,6 @@ impl MarkdownEditor {
             WIDTH,
         )
         .children(rows);
-        Some(overlay(position, list))
+        Some(overlay(position, appear(list, "completion", false)))
     }
 }

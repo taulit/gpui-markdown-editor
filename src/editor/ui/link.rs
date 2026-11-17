@@ -18,7 +18,7 @@ use gpui_component::input::{Input, InputState};
 
 use super::super::MarkdownEditor;
 use super::super::keys::{ApplyPrompt, ClosePrompt, PROMPT_CONTEXT};
-use super::{Palette, overlay, panel, place, tool_button};
+use super::{Palette, appear, overlay, panel, place, tool_button};
 use crate::edit::Selection;
 use crate::edit::inline_ops::span_at;
 use crate::event::EditorEvent;
@@ -256,7 +256,7 @@ impl MarkdownEditor {
                     .text_color(palette.accent)
                     .on_click(cx.listener(|this, _, window, cx| this.apply_prompt(window, cx))),
             );
-        Some(overlay(position, bar))
+        Some(overlay(position, appear(bar, "link-prompt", false)))
     }
 
     /// The bubble below the link at the caret, while nothing else is open.
@@ -333,7 +333,7 @@ impl MarkdownEditor {
                 text_button("link-unlink", "Remove")
                     .on_click(cx.listener(|this, _, window, cx| this.remove_link(window, cx))),
             );
-        Some(overlay(position, bubble))
+        Some(overlay(position, appear(bubble, "link-bubble", false)))
     }
 
     /// The window bounds of the start of `selection`, to place a popup at.
