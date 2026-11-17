@@ -70,6 +70,15 @@ pub struct EditorOptions {
     pub slash_items: Vec<SlashItem>,
     /// Which built-in UI parts are shown. Default: all.
     pub ui: UiParts,
+    /// Applies the Markdown input rules while typing: `# ` turns a paragraph
+    /// into a heading, `**x**` makes `x` bold, and so on, including the input
+    /// rules of [`extensions`](Self::extensions). With `false` everything is
+    /// typed literally; the formatting stays reachable through
+    /// [`MarkdownEditor::command`], the format bar and the shortcuts. The
+    /// slash menu and the `[[`/`#` completions are not input rules: switch
+    /// them off with [`ui`](Self::ui) and [`completions`](Self::completions).
+    /// Default `true`.
+    pub input_rules: bool,
 }
 
 impl Default for EditorOptions {
@@ -83,6 +92,7 @@ impl Default for EditorOptions {
             completions: None,
             slash_items: Vec::new(),
             ui: UiParts::default(),
+            input_rules: true,
         }
     }
 }
@@ -101,6 +111,7 @@ impl fmt::Debug for EditorOptions {
             .field("completions", &self.completions.is_some())
             .field("slash_items", &self.slash_items)
             .field("ui", &self.ui)
+            .field("input_rules", &self.input_rules)
             .finish()
     }
 }

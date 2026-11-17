@@ -53,6 +53,7 @@ pub struct EditorOptions {
     pub completions: Option<Arc<dyn Fn(CompletionKind, &str) -> Vec<Completion>>>, // für [[ und #
     pub slash_items: Vec<SlashItem>,                       // zusätzliche Einträge des Hosts
     pub ui: UiParts,                                       // format_bar, slash_menu, find_bar, link_popover an/aus
+    pub input_rules: bool,                                 // Eingaberegeln aus §6 an/aus, auch die der Erweiterungen (Standard an)
 }
 ```
 
@@ -126,7 +127,7 @@ pub enum Mark { Bold, Italic, Underline /* <u> */, Strike, Code, Highlight /* ==
 ## 6. Eingabe
 
 - **IME:** über `EntityInputHandler` (marked text, Vorschlagsfenster an Cursorposition). Pflichttest mit Akzent-Tasten (´ + e), Compose und ibus-pinyin *(prüfen: bekannter Panic-Bug in GPUI beim erneuten Tippen nach gelöschtem IME-Text, Workaround dokumentieren)*.
-- **Eingaberegeln** (wie Tiptap, abschaltbar):
+- **Eingaberegeln** (wie Tiptap, abschaltbar mit `EditorOptions::input_rules`; Slash-Menü und `[[`/`#`-Vervollständigung zählen nicht dazu, sie haben eigene Schalter in `UiParts` und `completions`):
 
   | Eingabe | Wirkung |
   |---|---|

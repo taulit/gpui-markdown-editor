@@ -79,6 +79,21 @@ fn inline_input_rules(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn input_rules_can_be_turned_off(cx: &mut TestAppContext) {
+    let options = EditorOptions {
+        input_rules: false,
+        ..options()
+    };
+    let (editor, cx) = open_with(cx, "", options);
+    cx.simulate_input("# a **x** ==y==");
+    assert_eq!(kinds(&editor, cx)[0], BlockKind::Paragraph);
+    let block = editor.read_with(cx, |e, _| e.document().blocks()[0].text().to_string());
+    assert_eq!(block, "# a **x** ==y==");
+    // Written escaped, so the file reads back as the same literal text.
+    assert_eq!(md(&editor, cx).trim_end(), r"\# a \*\*x\*\* \==y==");
+}
+
+#[gpui::test]
 fn backspace_right_after_a_rule_undoes_it(cx: &mut TestAppContext) {
     let (editor, cx) = open(cx, "");
     cx.simulate_input("# ");

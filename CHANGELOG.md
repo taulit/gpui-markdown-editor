@@ -5,6 +5,18 @@ API changes between tags are listed here because downstream (Sheaf) pins tags.
 
 ## [Unreleased]
 
+Release preparation (phase E5).
+
+- New option `EditorOptions::input_rules: bool` (default `true`). With
+  `false`, typed Markdown such as `# ` or `**x**` stays literal text,
+  including the input rules of extensions. The slash menu and the `[[`/`#`
+  completions are not affected; they keep their own switches
+  (`UiParts::slash_menu`, `EditorOptions::completions`).
+  `EditorOptions` is not `#[non_exhaustive]`, so a struct literal that
+  lists every field without `..Default::default()` no longer compiles;
+  literals ending in `..Default::default()` (as documented) are
+  unaffected.
+
 Benchmarks, motion and documentation (phase E4, part 1).
 
 - Popups (slash menu, completions, link popover and bubble, style

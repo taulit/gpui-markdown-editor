@@ -105,6 +105,10 @@
 //!   host entries to the slash menu.
 //! - `ui` switches the built-in [`UiParts`] on or off, to replace them with
 //!   your own UI driven by commands.
+//! - `input_rules` (default `true`) turns typed Markdown (`# `, `- `,
+//!   `**x**`, the input rules of extensions) into formatting; with `false`
+//!   it stays literal text. The slash menu and the completions are not
+//!   input rules and have their own switches (`ui`, `completions`).
 //!
 //! Colors and sizes come from [`EditorStyle`]; [`EditorStyle::from_theme`]
 //! derives them from the active gpui-component theme, and

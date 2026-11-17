@@ -161,6 +161,7 @@ impl MarkdownEditor {
             }),
         ];
         let mut state = EditorState::from_markdown("", extensions);
+        state.input_rules = options.input_rules;
         state.take_changes();
         let saved = state.history.position();
 
