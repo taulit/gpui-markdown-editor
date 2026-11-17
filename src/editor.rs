@@ -108,6 +108,7 @@ pub struct MarkdownEditor {
     column_drag: Option<table::ColumnDrag>,
     image_drag: Option<mouse::ImageDrag>,
     find: Option<ui::find::FindBar>,
+    slash: Option<ui::slash::SlashMenu>,
     /// The query of the find bar when it was closed.
     last_query: String,
     _subscriptions: [Subscription; 2],
@@ -162,6 +163,7 @@ impl MarkdownEditor {
             column_drag: None,
             image_drag: None,
             find: None,
+            slash: None,
             last_query: String::new(),
             _subscriptions: subscriptions,
         }
@@ -372,6 +374,10 @@ impl MarkdownEditor {
     /// folding lands.
     fn unfold_around(&mut self, _block: BlockId, _cx: &mut Context<Self>) {}
 
+    /// Asks for the source of an image to insert. Placeholder until the
+    /// link popover lands.
+    fn open_image_prompt(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {}
+
     /// Scrolls the caret (or the selected node) into view at the next frame.
     fn reveal_selection(&self) {
         let pos = match &self.state.selection {
@@ -399,6 +405,9 @@ impl MarkdownEditor {
         let changes = self.state.take_changes();
         if !keep_goal {
             self.goal_x = None;
+        }
+        if self.slash.is_some() && (changes.content || changes.selection) {
+            self.refresh_slash();
         }
         if changes.content || changes.selection {
             self.reveal_selection();
@@ -482,6 +491,7 @@ impl Render for MarkdownEditor {
             .size_full()
             .child(document)
             .children(self.render_find(cx))
+            .children(self.render_slash(window, cx))
     }
 }
 

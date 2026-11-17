@@ -383,6 +383,31 @@ fn e3_find() {
     }
 }
 
+const E3_SHORT: &str = "\
+Saturday
+
+Market at 9, then the bike shop. Remember the **receipt** for the wheel.
+
+";
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_slash() {
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        let mut typed = keys("ctrl-end enter");
+        typed.extend(keys_for("/"));
+        capture_with_keys(
+            &format!("e3-slash-{name}"),
+            mode,
+            E3_SHORT,
+            |_, _| {},
+            &[],
+            &typed,
+            None,
+        );
+    }
+}
+
 fn write_gradient(path: &Path, width: u32, height: u32, from: [u8; 3], to: [u8; 3]) {
     let img = image::RgbaImage::from_fn(width, height, |x, y| {
         let t = (x as f32 / width as f32 + y as f32 / height as f32) / 2.;

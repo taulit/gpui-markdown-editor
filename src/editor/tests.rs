@@ -10,6 +10,7 @@ mod find;
 mod image;
 mod ime;
 mod mouse;
+mod slash;
 mod table;
 mod timing;
 

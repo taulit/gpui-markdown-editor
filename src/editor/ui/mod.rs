@@ -8,6 +8,7 @@
 //! a popup field never reach the document's bindings.
 
 pub(super) mod find;
+pub(super) mod slash;
 
 use gpui::{
     App, Bounds, BoxShadow, Div, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -96,7 +97,6 @@ pub(super) fn tool_button(
 /// below it or, if `above` is preferred and there is room, above it, and
 /// keeps it inside `area` (the editor). Returns the position relative to
 /// `area`'s origin.
-#[allow(dead_code)] // used by the slash menu and popovers
 pub(super) fn place(
     anchor: Bounds<Pixels>,
     size: Size<Pixels>,

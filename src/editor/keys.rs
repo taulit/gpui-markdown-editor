@@ -331,6 +331,9 @@ fn block(kind: BlockKind) -> Op {
 
 impl MarkdownEditor {
     pub(super) fn run(&mut self, op: Op, window: &mut Window, cx: &mut Context<Self>) {
+        if self.slash.is_some() && self.slash_key(&op, window, cx) {
+            return;
+        }
         let now = Instant::now();
         let mut keep_goal = false;
         match op {
@@ -391,6 +394,28 @@ impl MarkdownEditor {
             }
         }
         self.after_change(keep_goal, window, cx);
+    }
+
+    /// Keys of the open slash menu. `true` if the key was used.
+    fn slash_key(&mut self, op: &Op, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        match op {
+            Op::Move(Motion::Up, false) => self.slash_move(-1),
+            Op::Move(Motion::Down, false) => self.slash_move(1),
+            Op::Enter | Op::Tab => match &self.slash {
+                Some(menu) if !menu.entries.is_empty() => {
+                    let selected = menu.selected;
+                    self.slash_choose(selected, window, cx);
+                }
+                _ => {
+                    self.slash = None;
+                    return false;
+                }
+            },
+            Op::Cancel => self.slash = None,
+            _ => return false,
+        }
+        cx.notify();
+        true
     }
 
     /// Pastes the clipboard: image data through
