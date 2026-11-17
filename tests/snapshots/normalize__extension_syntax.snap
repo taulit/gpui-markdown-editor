@@ -1,0 +1,10 @@
+---
+source: tests/normalize.rs
+expression: "normalized_with(indoc!\n{r\"\n            [[Note]] [[Target|Alias]] ![[embed.png]] #tag #a/b ==highlight==\n\n            \\[[not a link]] \\#nottag \\==not highlight== a#b ##c\n\n            | [[A\\|B]] | #x |\n            |---|---|\n        \"},\nextensions())"
+---
+[[Note]] [[Target|Alias]] ![[embed.png]] #tag #a/b ==highlight==
+
+\[[not a link]] \#nottag \==not highlight== a#b ##c
+
+| [[A\|B]] | #x  |
+| -------- | --- |

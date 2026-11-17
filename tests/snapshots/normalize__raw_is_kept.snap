@@ -1,0 +1,26 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{r\"\n        ---\n        title: Front matter\n        ---\n        <div align=center>\n          *not markdown*\n        </div>\n\n        > [!tip] Callout\n        > stays\n\n        Term\n        : definition\n\n        Text with <span class='x'>html</span>, a footnote[^1], $math_{1}$ and ![inline](img.png).\n\n        [^1]: Footnote\n            text\n\n        - item\n\n          [ref]: /in-item\n    \"})"
+---
+---
+title: Front matter
+---
+
+<div align=center>
+  *not markdown*
+</div>
+
+> [!tip] Callout
+> stays
+
+Term
+: definition
+
+Text with <span class='x'>html</span>, a footnote[^1], $math_{1}$ and ![inline](img.png).
+
+[^1]: Footnote
+    text
+
+- item
+
+  [ref]: /in-item

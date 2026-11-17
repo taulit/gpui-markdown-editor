@@ -1,0 +1,29 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{r\"\n        \\# heading \\- list 1\\. ordered: only escaped at the start of a line\n\n        \\# not a heading\n\n        \\- not a list\n\n        \\+ not a list\n\n        1\\. not ordered\n\n        \\> not a quote\n\n        \\--- and \\=== and \\___\n\n        2 * 3 * 4, a*b, snake_case, _private, 5 < 6, AT&T, a | b, [x], x[0], f(a)[1]\n\n        \\*literal stars\\* \\_literal underscores\\_ \\~\\~tildes\\~\\~ \\`backtick\\`\n\n        \\[text](url) \\![alt](src) \\<tag> \\<!-- c --> \\&amp; \\\\\\* C:\\dir\n\n        &#35; &amp;amp; &lt;b&gt; &#42;x&#42; &#32;lead and trail&#32;\n\n        line\\\n        \\# after a hard break\\\n        \\---\n    \"})"
+---
+\# heading - list 1. ordered: only escaped at the start of a line
+
+\# not a heading
+
+\- not a list
+
+\+ not a list
+
+1\. not ordered
+
+\> not a quote
+
+--- and === and ___
+
+2 * 3 * 4, a*b, snake_case, _private, 5 < 6, AT&T, a | b, [x], x[0], f(a)[1]
+
+\*literal stars\* \_literal underscores\_ \~\~tildes\~\~ \`backtick\`
+
+\[text](url) \![alt](src) \<tag> \<!-- c --> \&amp; \\* C:\dir
+
+\# \&amp; \<b> \*x\*  lead and trail&#32;
+
+line\
+\# after a hard break\
+\---

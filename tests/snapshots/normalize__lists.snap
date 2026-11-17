@@ -1,0 +1,18 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        * star\n        * star two\n        + plus\n\n        1) one\n        2) two\n\n        5. five\n        7. six\n\n        - loose\n\n        - list\n\n        -\n        - after empty\n    \"})"
+---
+- star
+- star two
+- plus
+
+1. one
+2. two
+
+5) five
+6) six
+
+- loose
+- list
+-
+- after empty

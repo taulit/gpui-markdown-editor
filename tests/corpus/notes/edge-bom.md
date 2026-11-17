@@ -1,0 +1,3 @@
+﻿# Title after BOM
+
+Text.
