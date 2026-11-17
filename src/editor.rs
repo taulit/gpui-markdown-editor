@@ -4,7 +4,8 @@ use std::fmt;
 use std::ops::Range;
 
 use gpui::{
-    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
+    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
     prelude::FluentBuilder as _, relative,
 };
@@ -12,12 +13,14 @@ use gpui_component::input::{InputEvent, Redo, Textarea, TextareaState, Undo};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::command::Command;
+use crate::edit::Selection;
 use crate::event::EditorEvent;
 use crate::extension::Extensions;
 use crate::meta::DocMeta;
 use crate::model::{Block, BlockId, BlockKind, Document, TextPos, TextRange};
 use crate::options::EditorOptions;
 use crate::style::EditorStyle;
+use crate::view::{DocumentElement, DocumentView, LayoutInput, ViewInput, ViewSource};
 
 /// A Markdown editor view.
 ///
@@ -71,6 +74,12 @@ pub struct MarkdownEditor {
     meta: DocMeta,
     highlights: Vec<TextRange>,
     scroll_target: Option<TextRange>,
+    /// Layout and scroll state of the rendered document.
+    view: DocumentView,
+    /// Temporary: render the document instead of the source, see
+    /// [`MarkdownEditor::__set_rich_preview`].
+    rich: bool,
+    rich_selection: Option<Selection>,
     _subscriptions: [Subscription; 2],
 }
 
@@ -105,6 +114,9 @@ impl MarkdownEditor {
             meta: DocMeta::default(),
             highlights: Vec::new(),
             scroll_target: None,
+            view: DocumentView::new(),
+            rich: false,
+            rich_selection: None,
             _subscriptions: subscriptions,
         }
     }
@@ -123,6 +135,8 @@ impl MarkdownEditor {
         self.dirty = false;
         self.highlights.clear();
         self.scroll_target = None;
+        self.rich_selection = None;
+        self.view.reset();
         cx.notify();
     }
 
@@ -220,6 +234,7 @@ impl MarkdownEditor {
     /// Scrolls so that `range` is visible. Does not move the cursor.
     pub fn scroll_to(&mut self, range: TextRange, cx: &mut Context<Self>) {
         self.scroll_target = Some(range);
+        self.view.request_reveal(range);
         cx.notify();
     }
 
@@ -290,6 +305,9 @@ impl MarkdownEditor {
             return;
         }
         self.document = Document::parse_with(&text, self.extensions.clone());
+        // Parsing again reuses ids for different blocks.
+        self.view.invalidate_all();
+        self.rich_selection = None;
         self.dirty = true;
         cx.emit(EditorEvent::Changed);
         cx.notify();
@@ -310,30 +328,161 @@ impl Focusable for MarkdownEditor {
     }
 }
 
+impl MarkdownEditor {
+    /// Temporary switch between the source view and the rendered document
+    /// (read-only apart from placing the caret and selecting with the mouse).
+    #[doc(hidden)]
+    pub fn __set_rich_preview(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.rich = on;
+        cx.notify();
+    }
+
+    /// Temporary: sets the selection shown by the rich preview, for tests and
+    /// screenshots. Offsets index the text of the given block or cell.
+    #[doc(hidden)]
+    pub fn __set_rich_selection(&mut self, anchor: TextPos, head: TextPos, cx: &mut Context<Self>) {
+        self.rich_selection = Some(Selection::Text { anchor, head });
+        self.view.request_reveal(TextRange {
+            start: head,
+            end: head,
+        });
+        cx.notify();
+    }
+
+    fn layout_input(&self) -> LayoutInput<'_> {
+        LayoutInput {
+            document: &self.document,
+            style: &self.style,
+            first_line_is_title: self.options.first_line_is_title,
+            max_width: self.options.max_width,
+        }
+    }
+
+    fn set_rich_selection(&mut self, selection: Option<Selection>, cx: &mut Context<Self>) {
+        if self.rich_selection != selection {
+            self.rich_selection = selection;
+            cx.emit(EditorEvent::SelectionChanged);
+            cx.notify();
+        }
+    }
+
+    fn rich_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ts = window.text_system().clone();
+        let view = self.view.clone();
+        let mut q = view.query(self.layout_input(), &ts);
+        // Rules and images are selected as a whole, table cells hold text.
+        let node = q.node_at(event.position).filter(|id| {
+            self.document
+                .block(*id)
+                .is_some_and(|b| !matches!(b.kind(), BlockKind::Table(_)))
+        });
+        let selection = if let Some(node) = node {
+            Some(Selection::Node(node))
+        } else {
+            let Some(pos) = q.position_at(event.position) else {
+                return;
+            };
+            let range = match event.click_count {
+                1 => None,
+                2 => q.word_range(pos),
+                _ => q.block_range(pos.block),
+            };
+            match (range, &self.rich_selection) {
+                (Some(r), _) => Some(Selection::Text {
+                    anchor: r.start,
+                    head: r.end,
+                }),
+                (None, Some(Selection::Text { anchor, .. })) if event.modifiers.shift => {
+                    Some(Selection::Text {
+                        anchor: *anchor,
+                        head: pos,
+                    })
+                }
+                (None, _) => Some(Selection::caret(pos)),
+            }
+        };
+        drop(q);
+        self.set_rich_selection(selection, cx);
+    }
+
+    fn rich_mouse_drag(
+        &mut self,
+        event: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !event.dragging() {
+            return;
+        }
+        let Some(Selection::Text { anchor, .. }) = self.rich_selection.clone() else {
+            return;
+        };
+        let ts = window.text_system().clone();
+        let view = self.view.clone();
+        let head = view
+            .query(self.layout_input(), &ts)
+            .position_at(event.position);
+        if let Some(head) = head {
+            self.set_rich_selection(Some(Selection::Text { anchor, head }), cx);
+        }
+    }
+}
+
+impl ViewSource for MarkdownEditor {
+    fn view_input(&self) -> ViewInput<'_> {
+        ViewInput {
+            layout: self.layout_input(),
+            selection: self.rich_selection.as_ref(),
+            highlights: &self.highlights,
+            caret_visible: true,
+            marked: None,
+        }
+    }
+}
+
 impl Render for MarkdownEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.flush_pending_text(window, cx);
 
+        if self.rich {
+            return div()
+                .size_full()
+                .on_mouse_down(MouseButton::Left, cx.listener(Self::rich_mouse_down))
+                .on_mouse_move(cx.listener(Self::rich_mouse_drag))
+                .child(DocumentElement::new(self.view.clone(), cx.entity()))
+                .into_any_element();
+        }
+
         let style = &self.style;
         let padding = style.padding;
-        div().size_full().flex().justify_center().child(
-            div()
-                .size_full()
-                .when_some(self.options.max_width, |this, max_width| {
-                    this.max_w(max_width + padding.left + padding.right)
-                })
-                .pt(padding.top)
-                .pl(padding.left)
-                .pr(padding.right)
-                .child(
-                    Textarea::new(&self.input)
-                        .appearance(false)
-                        .h(relative(1.))
-                        .font_family(style.font_family.clone())
-                        .text_size(style.text_size)
-                        .line_height(relative(style.line_height)),
-                ),
-        )
+        div()
+            .size_full()
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .size_full()
+                    .when_some(self.options.max_width, |this, max_width| {
+                        this.max_w(max_width + padding.left + padding.right)
+                    })
+                    .pt(padding.top)
+                    .pl(padding.left)
+                    .pr(padding.right)
+                    .child(
+                        Textarea::new(&self.input)
+                            .appearance(false)
+                            .h(relative(1.))
+                            .font_family(style.font_family.clone())
+                            .text_size(style.text_size)
+                            .line_height(relative(style.line_height)),
+                    ),
+            )
+            .into_any_element()
     }
 }
 
