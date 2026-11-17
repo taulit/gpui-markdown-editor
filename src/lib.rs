@@ -168,6 +168,8 @@
 //!   [`scroll_to`](MarkdownEditor::scroll_to), [`EditorStyle`],
 //!   `first_line_is_title` and `max_width` are applied.
 
+#[doc(hidden)]
+pub mod bench;
 pub mod command;
 mod edit;
 pub mod editor;

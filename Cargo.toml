@@ -51,3 +51,11 @@ unsafe_code = "forbid"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+
+[[bench]]
+name = "markdown"
+harness = false
+
+[[bench]]
+name = "editor"
+harness = false
