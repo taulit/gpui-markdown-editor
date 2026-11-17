@@ -355,9 +355,12 @@
 //!   [`Document::to_markdown`].
 //! - **Undo is exact:** undoing every edit gives back the loaded text byte
 //!   for byte.
-//! - An empty paragraph between blocks is written as `&#32;` (Markdown has
-//!   no empty paragraph), and an edited hard-wrapped paragraph is written on
-//!   one line.
+//! - **Empty paragraphs are not written:** Markdown has none, and in the
+//!   editor they are only places to type. The blocks around one are written
+//!   as neighbours, so two lists separated only by an empty paragraph read
+//!   back as one list. Adding an empty paragraph still makes the editor
+//!   [dirty](MarkdownEditor::is_dirty).
+//! - An edited hard-wrapped paragraph is written on one line.
 //!
 //! # Headless use
 //!

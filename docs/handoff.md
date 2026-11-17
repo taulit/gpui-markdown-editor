@@ -33,8 +33,8 @@ Nothing. E0–E3 are merged to `main` (PRs 1, 3, 4, 5; tag `v0.0.4`). E4 is comp
 - Folding and block drag work on top-level blocks only. Extensions can add marks, not inline nodes or block renderers.
 - Attachments are a paragraph that is only a link to a local non-image file (the plan does not define the syntax).
 
-- An empty paragraph between blocks is saved as `&#32;` (Markdown has no empty paragraph). Open question for the
-  user: keep, or drop empty paragraphs on save.
+- Empty paragraphs are not saved (decided for 0.1.0): they exist only as places to type. Two lists around one
+  join into one list on reload. Files from 0.0.3/0.0.4 with a lone `&#32;` line read it as a paragraph with a space.
 
 - Enter in a quote starts a second quote instead of a new paragraph in the same quote (plan does not specify).
 - An edited paragraph that was hard-wrapped in the source is written on one line.

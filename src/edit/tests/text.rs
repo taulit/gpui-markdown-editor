@@ -344,12 +344,14 @@ fn blank_lines_in_pasted_text_make_no_empty_paragraphs() {
 fn enter_in_an_empty_middle_item_round_trips() {
     let mut state = ed("- a\n- ‸\n- c\n");
     enter(&mut state);
+    // The item became an empty paragraph, which is not written: the items
+    // around it read back as one list.
+    assert_eq!(state.doc.blocks[1].kind, BlockKind::Paragraph);
     let markdown = md(&state);
-    assert_eq!(markdown, "- a\n\n&#32;\n- c\n");
+    assert_eq!(markdown, "- a\n- c\n");
     let again = Document::parse_with(&markdown, extensions());
-    assert_eq!(again.blocks.len(), 3);
-    assert_eq!(again.blocks[1].kind, BlockKind::Paragraph);
-    assert!(again.blocks[1].content.text.is_empty());
+    let kinds: Vec<_> = again.blocks.iter().map(|b| b.kind.clone()).collect();
+    assert_eq!(kinds, [BlockKind::BulletItem, BlockKind::BulletItem]);
     let normalized = state.doc.normalized();
     assert_eq!(
         Document::parse_with(&normalized, extensions()).normalized(),

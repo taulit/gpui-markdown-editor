@@ -16,6 +16,18 @@ Release preparation (phase E5).
   lists every field without `..Default::default()` no longer compiles;
   literals ending in `..Default::default()` (as documented) are
   unaffected.
+- **File format change** relative to 0.0.3 and 0.0.4: empty paragraphs
+  are no longer written. They exist only as places to type; the
+  serializer leaves them out everywhere (between blocks, inside quotes
+  and list items), where 0.0.3/0.0.4 wrote `&#32;` on its own line. The
+  blocks around a dropped paragraph are written as neighbours: `- a`,
+  an empty paragraph, `- c` (Enter in an empty middle item) is saved as
+  `- a\n- c` and reads back as one list. The parser no longer treats a
+  lone `&#32;` specially: in files written by 0.0.3/0.0.4 it reads as a
+  paragraph containing one space, as CommonMark defines. Unedited files
+  still round-trip byte for byte, and undoing every edit restores them.
+  Adding only an empty paragraph makes the editor dirty (`is_dirty`)
+  although `markdown()` is unchanged.
 
 Benchmarks, motion and documentation (phase E4, part 1).
 

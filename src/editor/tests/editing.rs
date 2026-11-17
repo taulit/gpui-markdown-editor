@@ -94,6 +94,14 @@ fn input_rules_can_be_turned_off(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn an_empty_paragraph_is_an_edit_but_not_written(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, "a\n\nb\n");
+    press(cx, "end enter");
+    assert_eq!(md(&editor, cx), "a\n\nb\n");
+    assert!(editor.read_with(cx, |e, _| e.is_dirty()));
+}
+
+#[gpui::test]
 fn backspace_right_after_a_rule_undoes_it(cx: &mut TestAppContext) {
     let (editor, cx) = open(cx, "");
     cx.simulate_input("# ");

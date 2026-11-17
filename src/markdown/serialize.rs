@@ -14,14 +14,9 @@ use super::prefix::normalize_newlines;
 use super::write_inline::{InlineCtx, InlineWriter, write_alt, write_destination, write_title};
 use crate::model::{Align, Block, BlockKind, Document, ImageData, TableData};
 
-/// How an empty paragraph between blocks is written: Markdown has no empty
-/// paragraphs, and blank lines alone would merge the blocks around it (two
-/// lists into one loose list).
-pub(crate) const EMPTY_PARAGRAPH: &str = "&#32;";
-
-/// An empty paragraph: written as [`EMPTY_PARAGRAPH`] between blocks, left
-/// out at the start and end of the document, where it is only a place to
-/// type.
+/// An empty paragraph. It is not written: Markdown has no empty paragraph,
+/// and in the editor it is only a place to type. The blocks around it are
+/// written as neighbours (two bullet items on either side join one list).
 fn is_empty_paragraph(block: &Block) -> bool {
     block.kind == BlockKind::Paragraph && block.content.text.is_empty() && block.children.is_empty()
 }
@@ -198,23 +193,18 @@ pub(crate) fn serialize(document: &Document, mode: Mode) -> String {
     let source = &*document.source;
     let bom = if source.starts_with(BOM) { BOM } else { "" };
     let all = &document.blocks;
-    let first = all.iter().position(|b| !is_empty_paragraph(b));
-    let last = all.iter().rposition(|b| !is_empty_paragraph(b));
-    let blocks = match (first, last) {
-        (Some(first), Some(last)) => &all[first..=last],
-        _ if all.is_empty() => all.as_slice(),
-        _ => {
-            // Nothing but empty paragraphs.
-            let body = &source[bom.len()..];
-            let eol = if uses_crlf(source) { "\r\n" } else { "\n" };
-            let end = if is_blank(body) || body.ends_with(['\n', '\r']) {
-                eol
-            } else {
-                ""
-            };
-            return format!("{bom}{end}");
-        }
-    };
+    let blocks: Vec<&Block> = all.iter().filter(|b| !is_empty_paragraph(b)).collect();
+    if blocks.is_empty() && !all.is_empty() {
+        // Nothing but empty paragraphs.
+        let body = &source[bom.len()..];
+        let eol = if uses_crlf(source) { "\r\n" } else { "\n" };
+        let end = if is_blank(body) || body.ends_with(['\n', '\r']) {
+            eol
+        } else {
+            ""
+        };
+        return format!("{bom}{end}");
+    }
     if blocks.is_empty() {
         return if is_blank(&source[bom.len()..]) {
             source.to_string()
@@ -270,7 +260,7 @@ pub(crate) fn serialize(document: &Document, mode: Mode) -> String {
     let writer = Writer {
         inline: InlineWriter {
             extensions: &document.extensions,
-            escape_brackets: rewrites && has_definitions(blocks),
+            escape_brackets: rewrites && has_definitions(all),
         },
     };
 
@@ -504,7 +494,8 @@ impl Writer<'_> {
     fn sequence(&self, blocks: &[Block]) -> String {
         let mut out = String::new();
         let mut previous: Option<Previous> = None;
-        for (index, block) in blocks.iter().enumerate() {
+        let blocks = blocks.iter().filter(|b| !is_empty_paragraph(b));
+        for (index, block) in blocks.enumerate() {
             let block_family = family(&block.kind);
             let continues = previous.filter(|previous| Some(previous.family) == block_family);
             let mut style = continues.map_or_else(ListStyle::default, |previous| previous.style);
@@ -531,7 +522,6 @@ impl Writer<'_> {
             ..InlineCtx::default()
         };
         match &block.kind {
-            BlockKind::Paragraph if is_empty_paragraph(block) => EMPTY_PARAGRAPH.to_string(),
             BlockKind::Paragraph => self.inline.write(&block.content, line),
             BlockKind::Heading(level) => self.heading(block, *level),
             BlockKind::BulletItem => {
@@ -553,7 +543,7 @@ impl Writer<'_> {
                     ..line
                 };
                 let mut body = self.inline.write(&block.content, ctx);
-                if !block.children.is_empty() {
+                if block.children.iter().any(|c| !is_empty_paragraph(c)) {
                     if !body.is_empty() {
                         body.push_str("\n\n");
                     }
@@ -624,7 +614,7 @@ impl Writer<'_> {
             ..InlineCtx::default()
         };
         let mut body = self.inline.write(&block.content, ctx);
-        if let Some(first) = block.children.first() {
+        if let Some(first) = block.children.iter().find(|c| !is_empty_paragraph(c)) {
             let children = self.sequence(&block.children);
             if body.is_empty() {
                 // Without text of its own the item starts on the next line.

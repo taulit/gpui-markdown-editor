@@ -39,8 +39,9 @@ Read by other sessions. Keep terse.
 
 - E4 (branch `phase/e4-release`, PR open): benchmarks (`docs/performance.md`), motion, crate guide, README,
   release checklist. No API changes since `v0.0.4`. Tag `v0.1.0` follows after the decisions below.
-- Decisions pending with the user: `EditorOptions::input_rules` (plan says input rules can be switched off, no
-  option exists), `Changed` payload (plan §3 vs §1a), custom inline nodes for extensions, `&#32;` for empty paragraphs.
+- E5 (branch `phase/e5-release-0.1.0`): the former open decisions are settled: `EditorOptions::input_rules` added,
+  `Changed` stays without payload (plan §3 fixed), extensions add marks only (documented), empty paragraphs are not
+  saved (`&#32;` dropped).
 
 ## Versions for downstream
 

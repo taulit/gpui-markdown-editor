@@ -241,6 +241,11 @@ impl MarkdownEditor {
     /// Returns `true` if the content differs from the last
     /// [`set_markdown`](Self::set_markdown) or [`mark_saved`](Self::mark_saved):
     /// undoing back to that point makes the editor clean again.
+    ///
+    /// Every edit counts, also one the file does not show: after adding only
+    /// an empty paragraph (Enter at the end of a line) the editor is dirty
+    /// although [`markdown`](Self::markdown) is unchanged, because empty
+    /// paragraphs are not written.
     pub fn is_dirty(&self) -> bool {
         self.state.history.position() != self.saved
     }
