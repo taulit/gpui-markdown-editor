@@ -90,6 +90,10 @@ pub(crate) struct ViewInput<'a> {
     pub resolve_src: Option<&'a crate::options::SrcResolver>,
     /// The folded headings, whose chevron stays visible.
     pub folded: &'a std::collections::HashSet<BlockId>,
+    /// Show the drag handle of the block under the mouse.
+    pub drag_handles: bool,
+    /// The slot being dragged and the gap it would be dropped at.
+    pub block_drag: Option<(usize, Option<usize>)>,
 }
 
 /// An entity a [`DocumentElement`] can render. The element routes text

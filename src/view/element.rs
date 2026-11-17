@@ -51,6 +51,12 @@ fn cursor_at(
     let ts = window.text_system().clone();
     let mut q = view.query(input.layout, &ts);
     let caret = input.selection.and_then(|s| s.head()).map(|h| h.block);
+    if input.block_drag.is_some() {
+        return CursorStyle::ClosedHand;
+    }
+    if q.drag_handle_at(p).is_some() {
+        return CursorStyle::OpenHand;
+    }
     match q.affordance_at(p, input.hover.or(Some(p)), caret) {
         Some(Affordance::ColumnBorder { .. }) => return CursorStyle::ResizeLeftRight,
         Some(_) => return CursorStyle::PointingHand,

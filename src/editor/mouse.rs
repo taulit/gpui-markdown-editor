@@ -61,6 +61,10 @@ impl ViewSource for MarkdownEditor {
             open_handle: self.table_menu.map(|m| m.handle),
             resolve_src: self.options.resolve_src.as_ref(),
             folded: &self.folded,
+            drag_handles: self.drag.is_none()
+                && self.image_drag.is_none()
+                && self.column_drag.is_none(),
+            block_drag: self.block_drag.map(|d| (d.from, d.gap)),
         }
     }
 
@@ -77,6 +81,12 @@ impl ViewSource for MarkdownEditor {
         let view = self.view.clone();
         let mut q = view.query(self.layout_input(), &ts);
 
+        if let Some(ix) = q.drag_handle_at(p) {
+            drop(q);
+            self.start_block_drag(ix);
+            cx.notify();
+            return;
+        }
         if let Some(heading) = q.fold_toggle_at(p) {
             drop(q);
             self.toggle_fold(heading, window, cx);
@@ -203,6 +213,18 @@ impl ViewSource for MarkdownEditor {
     }
 
     fn mouse_drag(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.block_drag.is_some() {
+            let ts = window.text_system().clone();
+            let view = self.view.clone();
+            let gap = view
+                .query(self.layout_input(), &ts)
+                .drop_gap_at(event.position);
+            if let Some(drag) = &mut self.block_drag {
+                drag.gap = Some(gap);
+            }
+            cx.notify();
+            return;
+        }
         if let Some(drag) = &mut self.image_drag {
             let dx = (event.position.x - drag.start_x).as_f32();
             let dx = if drag.right { dx } else { -dx };
@@ -254,6 +276,10 @@ impl ViewSource for MarkdownEditor {
     }
 
     fn mouse_up(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.block_drag.is_some() {
+            self.finish_block_drag(window, cx);
+            return;
+        }
         if self.drag.take().is_some() {
             // The format bar hides while the mouse selects.
             cx.notify();

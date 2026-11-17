@@ -211,6 +211,52 @@ pub(crate) fn build_frame(
         });
     }
 
+    // The drag handle of the block under the mouse (or being dragged), and
+    // the line where it would be dropped.
+    for v in &visible {
+        let dragged = input.block_drag.map(|d| d.0) == Some(v.slot);
+        let hovered = input.drag_handles
+            && input.block_drag.is_none()
+            && input
+                .hover
+                .is_some_and(|h| h.y >= v.origin.y && h.y < v.origin.y + v.layout.height);
+        if !(dragged || hovered) || v.layout.height <= Pixels::ZERO {
+            continue;
+        }
+        let Some(r) = super::geometry::handle_rect(&v.layout) else {
+            continue;
+        };
+        let r = r + v.origin;
+        let on = dragged || input.hover.is_some_and(|h| r.dilate(px(3.)).contains(&h));
+        let color = if on {
+            style.muted_color
+        } else {
+            style.faint_color
+        };
+        for row in 0..3 {
+            for col in 0..2 {
+                let c = point(
+                    r.origin.x + px(4. + 6. * col as f32),
+                    r.origin.y + px(4. + 5. * row as f32),
+                );
+                let dot = Bounds::new(c - point(px(1.25), px(1.25)), size(px(2.5), px(2.5)));
+                frame
+                    .over
+                    .push(Overlay::Quad(fill(dot, color).corner_radii(px(1.25))));
+            }
+        }
+    }
+    if let Some((_, Some(gap))) = input.block_drag {
+        let y = state.bounds.origin.y + state.top_of(gap) - scroll;
+        let line = Bounds::new(
+            point(column_x - px(4.), y - px(1.)),
+            size(state.width + px(8.), px(2.)),
+        );
+        frame.over.push(Overlay::Quad(
+            fill(line, style.node_selection_color).corner_radii(px(1.)),
+        ));
+    }
+
     let current = style.node_selection_color.opacity(0.55);
     let ranges = input
         .highlights

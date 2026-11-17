@@ -337,6 +337,54 @@ impl<'a> ViewQuery<'a> {
         inside.then(|| (self.input.document.blocks()[ix].id, chevron))
     }
 
+    /// The visible top-level block at the height of `p`.
+    pub fn block_row_at(&mut self, p: Point<Pixels>) -> Option<usize> {
+        let y = self.state.doc_point(p).y;
+        let ix = self.state.slot_at_y(y)?;
+        let block = self.input.document.blocks().get(ix)?;
+        if self.input.hidden.contains(&block.id) {
+            return None;
+        }
+        let top = self.state.top_of(ix);
+        (y >= top && y < top + self.state.slots[ix].height).then_some(ix)
+    }
+
+    /// The drag handle of the visible top-level block in slot `ix`.
+    pub fn drag_handle(&mut self, ix: usize) -> Option<Bounds<Pixels>> {
+        let layout = self.layout(ix)?;
+        let r = handle_rect(&layout)?;
+        Some(self.state.window_rect(ix, r))
+    }
+
+    /// The slot whose drag handle is at `p`.
+    pub fn drag_handle_at(&mut self, p: Point<Pixels>) -> Option<usize> {
+        let ix = self.block_row_at(p)?;
+        let r = self.drag_handle(ix)?;
+        r.dilate(px(3.)).contains(&p).then_some(ix)
+    }
+
+    /// Where a dragged block would be dropped with the mouse at `p`: the
+    /// index of the top-level block it would be inserted before (the
+    /// number of blocks for the end). Never inside a folded section.
+    pub fn drop_gap_at(&mut self, p: Point<Pixels>) -> usize {
+        let n = self.state.slots.len();
+        let y = self.state.doc_point(p).y;
+        let Some(ix) = self.state.slot_at_y(y) else {
+            return 0;
+        };
+        let top = self.state.top_of(ix);
+        let mut gap = if y > top + self.state.slots[ix].height / 2. {
+            ix + 1
+        } else {
+            ix
+        };
+        let blocks = self.input.document.blocks();
+        while gap < n && self.input.hidden.contains(&blocks[gap].id) {
+            gap += 1;
+        }
+        gap
+    }
+
     /// The heading whose fold chevron is at `p`.
     pub fn fold_toggle_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
         let (id, r) = self.heading_row_at(p)?;
@@ -653,6 +701,19 @@ pub(crate) fn chevron_rect(line: Bounds<Pixels>) -> Bounds<Pixels> {
         point(px(-26.), line.center().y - px(9.)),
         size(px(18.), px(18.)),
     )
+}
+
+/// The drag handle of a block layout, left of its first line (or its top
+/// for blocks without text), relative to the block.
+pub(crate) fn handle_rect(layout: &BlockLayout) -> Option<Bounds<Pixels>> {
+    let center = match layout.nodes.first() {
+        Some(node) => node.line_rect(0).center().y,
+        None => layout.rects.first()?.2.top() + px(12.),
+    };
+    Some(Bounds::new(
+        point(px(-46.), center - px(9.)),
+        size(px(14.), px(18.)),
+    ))
 }
 
 pub(crate) fn word_at(text: &str, offset: usize) -> Range<usize> {

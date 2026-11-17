@@ -354,6 +354,25 @@ impl EditorState {
         })
     }
 
+    /// Moves the top-level blocks `from..=to` (with their children) so that
+    /// they stand before top-level block `gap` (`gap` = number of blocks:
+    /// to the end). One undo step. `false` if they would not move.
+    pub(crate) fn move_top_blocks(&mut self, from: usize, to: usize, gap: usize) -> bool {
+        let n = self.doc.blocks.len();
+        if from > to || to >= n || gap > n || (from..=to + 1).contains(&gap) {
+            return false;
+        }
+        let ids: Vec<BlockId> = self.doc.blocks[from..=to].iter().map(|b| b.id).collect();
+        self.transact(EditKind::Other, None, "", move |tr, sel| {
+            for (k, id) in ids.into_iter().enumerate() {
+                // `index` counts after the block was taken out.
+                let index = if gap < from { gap + k } else { gap - 1 };
+                tr.move_block(id, None, index)?;
+            }
+            Ok(sel.clone())
+        })
+    }
+
     /// The block new blocks are inserted after: the block at the end of the
     /// selection, or the table of a cell.
     fn insertion_anchor(&self) -> Option<BlockId> {

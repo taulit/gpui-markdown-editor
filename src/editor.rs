@@ -1,5 +1,6 @@
 //! The editor entity.
 
+mod drag;
 mod input;
 mod keys;
 mod mouse;
@@ -118,6 +119,7 @@ pub struct MarkdownEditor {
     /// The selection head after the last change, to tell the direction of
     /// a caret move into a folded section.
     last_head: Option<TextPos>,
+    block_drag: Option<drag::BlockDrag>,
     /// The query of the find bar when it was closed.
     last_query: String,
     _subscriptions: [Subscription; 2],
@@ -178,6 +180,7 @@ impl MarkdownEditor {
             folded: Default::default(),
             hidden: Default::default(),
             last_head: None,
+            block_drag: None,
             last_query: String::new(),
             _subscriptions: subscriptions,
         }
@@ -509,7 +512,13 @@ impl Render for MarkdownEditor {
         let document = div()
             .key_context(keys::CONTEXT)
             .track_focus(&self.focus)
-            .size_full();
+            .size_full()
+            .on_drop(
+                cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
+                    let position = window.mouse_position();
+                    this.drop_paths(paths.paths(), position, window, cx);
+                }),
+            );
         let document = keys::bind_actions(document, cx)
             .child(DocumentElement::new(self.view.clone(), cx.entity()))
             .child(Scrollbar::vertical(&self.view))

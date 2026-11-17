@@ -86,6 +86,8 @@ fn input<'a>(
         open_handle: None,
         resolve_src: None,
         folded: &NO_HIDDEN,
+        drag_handles: false,
+        block_drag: None,
     }
 }
 
