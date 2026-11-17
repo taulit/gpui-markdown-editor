@@ -13,7 +13,7 @@
 mod a11y;
 mod element;
 mod geometry;
-mod images;
+pub(crate) mod images;
 mod layout;
 mod paint;
 mod scroll;

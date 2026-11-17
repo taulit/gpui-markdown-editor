@@ -150,3 +150,59 @@ fn dropped_image_files_go_through_on_image(cx: &mut TestAppContext) {
     assert_eq!(md(&editor, cx), "Text\n\n![](assets/shot.png)\n");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[gpui::test]
+fn dropped_images_skip_large_and_special_files(cx: &mut TestAppContext) {
+    let dir = std::env::temp_dir().join(format!("gme-drop-bg-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let image = dir.join("shot.png");
+    std::fs::write(&image, b"\x89PNG fake").unwrap();
+    // Larger than the cap (sparse, nothing is written).
+    let huge = dir.join("huge.png");
+    std::fs::File::create(&huge)
+        .unwrap()
+        .set_len(crate::view::images::MAX_IMAGE_BYTES + 1)
+        .unwrap();
+    let mut paths = vec![huge, image];
+    #[cfg(unix)]
+    {
+        // A FIFO named like an image must not block.
+        let fifo = dir.join("pipe.png");
+        if std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .is_ok_and(|s| s.success())
+        {
+            paths.insert(0, fifo);
+        }
+    }
+
+    let received = Arc::new(Mutex::new(Vec::new()));
+    let sink = received.clone();
+    let options = EditorOptions {
+        on_image: Some(Arc::new(move |bytes: Vec<u8>, _: &str| {
+            sink.lock().unwrap().push(bytes.len());
+            Some("assets/shot.png".to_string())
+        })),
+        ..options()
+    };
+    let (editor, cx) = open_with(cx, "Text\n", options);
+    let b = block(&editor, cx, 0);
+    let at = point_of(
+        &editor,
+        cx,
+        TextPos {
+            block: b,
+            offset: 4,
+        },
+    );
+    cx.simulate_event(FileDropEvent::Entered {
+        position: at,
+        paths: ExternalPaths(paths.into()),
+    });
+    cx.simulate_event(FileDropEvent::Submit { position: at });
+    cx.run_until_parked();
+    assert_eq!(*received.lock().unwrap(), [9]);
+    assert_eq!(md(&editor, cx), "Text\n\n![](assets/shot.png)\n");
+    std::fs::remove_dir_all(&dir).ok();
+}

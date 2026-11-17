@@ -8,6 +8,7 @@ use gpui::{Context, Pixels, Point, Window};
 use super::MarkdownEditor;
 use crate::edit::Selection;
 use crate::model::TextPos;
+use crate::view::images::{MAX_IMAGE_BYTES, read_capped};
 
 /// A top-level block (with the folded section of a heading) being moved.
 #[derive(Clone, Copy, Debug)]
@@ -35,10 +36,12 @@ pub(super) fn image_mime(path: &Path) -> Option<&'static str> {
 }
 
 impl MarkdownEditor {
-    /// Files dropped at `position`: image files go through
+    /// Files dropped at `position`: the caret goes to the drop point, and
+    /// image files go through
     /// [`EditorOptions::on_image`](crate::EditorOptions::on_image) like
-    /// pasted image data and are inserted below the block at the drop
-    /// point. Other files are ignored.
+    /// pasted image data and are inserted there as image blocks. The files
+    /// are read on the background executor, regular files of at most
+    /// [`MAX_IMAGE_BYTES`] only. Other files are ignored.
     pub(super) fn drop_paths(
         &mut self,
         paths: &[PathBuf],
@@ -46,27 +49,45 @@ impl MarkdownEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(handler) = self.options.on_image.clone() else {
+        if self.options.on_image.is_none() {
             return;
-        };
+        }
+        let images: Vec<(PathBuf, &'static str)> = paths
+            .iter()
+            .filter_map(|p| Some((p.clone(), image_mime(p)?)))
+            .collect();
+        if images.is_empty() {
+            return;
+        }
         let ts = window.text_system().clone();
         let view = self.view.clone();
         let target = view.query(self.layout_input(), &ts).position_at(position);
         if let Some(pos) = target {
             self.state.set_selection(Selection::caret(pos));
         }
-        for path in paths {
-            let Some(mime) = image_mime(path) else {
-                continue;
-            };
-            let Ok(bytes) = std::fs::read(path) else {
-                continue;
-            };
-            if let Some(src) = handler(bytes, mime) {
-                self.state.insert_image(&src, "");
-            }
-        }
         self.after_change(false, window, cx);
+        let read = cx.background_executor().spawn(async move {
+            images
+                .into_iter()
+                .filter_map(|(path, mime)| Some((read_capped(&path, MAX_IMAGE_BYTES).ok()?, mime)))
+                .collect::<Vec<_>>()
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let files = read.await;
+            this.update_in(cx, |this, window, cx| {
+                let Some(handler) = this.options.on_image.clone() else {
+                    return;
+                };
+                for (bytes, mime) in files {
+                    if let Some(src) = handler(bytes, mime) {
+                        this.state.insert_image(&src, "");
+                    }
+                }
+                this.after_change(false, window, cx);
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Starts dragging top-level block `ix` (with its section if it is a
