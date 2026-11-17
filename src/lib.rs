@@ -122,11 +122,15 @@
 //!   the column menu); these bindings use the key context
 //!   `MarkdownEditor && table`. Columns are as wide as their
 //!   content (48 to 320 px), a table wider than the column is scaled down
-//!   and wraps. Dragging a column border sets its width, stored in
-//!   [`DocMeta::column_widths`] with [`EditorEvent::MetaChanged`].
+//!   and wraps; a column of numbers without an alignment is right-aligned,
+//!   with tabular figures. Dragging a column border sets its width, stored
+//!   in [`DocMeta::column_widths`] with [`EditorEvent::MetaChanged`]; widths
+//!   follow column edits and their undo.
 //! - **Images**: loaded asynchronously through
 //!   [`EditorOptions::resolve_src`] (absolute paths without a resolver,
-//!   http(s) URLs through GPUI), decoded and scaled down off the UI thread,
+//!   http(s) URLs through GPUI's HTTP client), regular files and downloads
+//!   of at most 64 MB, decoded (at most 16384 px a side) and scaled down
+//!   off the UI thread,
 //!   only near the viewport. Shown with radius 12 at their size (or the
 //!   width set for them) within the content width; the placeholder with the
 //!   alt text stays while loading and on failure. A selected image has
@@ -139,7 +143,8 @@
 //!   counts and steps through matches; `[[` and `#` open the host's
 //!   [completions](EditorOptions::completions). All work with the keyboard.
 //! - **Folding**: the chevron left of a heading (or Ctrl+.) folds its
-//!   section; folded blocks are not laid out and the caret skips them. The
+//!   section; folded blocks are not laid out and the caret skips them. An
+//!   edit that would hide visible content unfolds the section instead. The
 //!   state is [`DocMeta::folded_headings`].
 //! - **Attachments** (plan §9): a paragraph that is only a link to a local
 //!   file that is not an image (`[Report.pdf](files/report.pdf)`) is drawn

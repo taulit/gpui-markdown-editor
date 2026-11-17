@@ -10,8 +10,10 @@ use crate::view::Decoration;
 
 const DOC: &str = "intro\n\n[report.pdf](report.pdf)\n\n[site](https://x.org/a.pdf)\n\n[pic](pic.png)\n\n[gone.zip](gone.zip)\n";
 
-fn fixture() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("gme-attach-{}", std::process::id()));
+/// A directory with a 2 KB `report.pdf`, one per test (they run in
+/// parallel and remove their directory).
+fn fixture(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("gme-attach-{}-{name}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("report.pdf"), vec![0u8; 2048]).unwrap();
     dir
@@ -56,7 +58,7 @@ fn row(
 
 #[gpui::test]
 fn local_file_links_render_as_attachment_rows(cx: &mut TestAppContext) {
-    let dir = fixture();
+    let dir = fixture("rows");
     let (editor, cx) = open_with(cx, DOC, options_in(dir.clone()));
     assert_eq!(row(&editor, cx, 1), (true, vec!["2.0 KB".to_string()]));
     assert!(!row(&editor, cx, 2).0, "a URL is a link");
@@ -69,7 +71,7 @@ fn local_file_links_render_as_attachment_rows(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn clicking_an_attachment_emits_its_event(cx: &mut TestAppContext) {
-    let dir = fixture();
+    let dir = fixture("click");
     let (editor, cx) = open_with(cx, DOC, options_in(dir.clone()));
     let events = record_events(&editor, cx);
     let b = block(&editor, cx, 1);
