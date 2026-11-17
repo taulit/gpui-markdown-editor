@@ -248,7 +248,10 @@ impl ViewSource for MarkdownEditor {
     }
 
     fn mouse_up(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
-        self.drag = None;
+        if self.drag.take().is_some() {
+            // The format bar hides while the mouse selects.
+            cx.notify();
+        }
         if let Some(drag) = self.image_drag.take() {
             if (drag.width as f32 - drag.start_width).abs() >= 1. {
                 self.state.set_image_width(drag.id, Some(drag.width));

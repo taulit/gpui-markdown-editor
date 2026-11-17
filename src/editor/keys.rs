@@ -391,7 +391,8 @@ impl MarkdownEditor {
             Op::Link => self.toggle_link(cx),
             Op::Cancel => {
                 // Without a menu Escape belongs to the host.
-                if self.table_menu.take().is_none() && self.find.take().is_none() {
+                let style_menu = std::mem::take(&mut self.style_menu);
+                if self.table_menu.take().is_none() && self.find.take().is_none() && !style_menu {
                     cx.propagate();
                     return;
                 }

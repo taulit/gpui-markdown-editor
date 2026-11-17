@@ -456,6 +456,62 @@ fn e3_link() {
     }
 }
 
+/// A left click at `(x, y)`.
+fn click_at(x: f32, y: f32) -> Vec<PlatformInput> {
+    let position = point(px(x), px(y));
+    vec![
+        PlatformInput::MouseDown(MouseDownEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+            first_mouse: false,
+        }),
+        PlatformInput::MouseUp(MouseUpEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+        }),
+    ]
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_formatbar() {
+    // "receipt" (bold) selected: the mark tools, bold active.
+    let select = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let text = editor.document().blocks()[1].text().to_string();
+        let start = text.find("receipt").unwrap();
+        let anchor = TextPos {
+            block,
+            offset: start,
+        };
+        let head = TextPos {
+            block,
+            offset: start + "receipt".len(),
+        };
+        editor.__set_selection(anchor, head, cx);
+    };
+    let caret = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let pos = TextPos { block, offset: 6 };
+        editor.__set_selection(pos, pos, cx);
+    };
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture(&format!("e3-formatbar-{name}"), mode, E3_SHORT, select);
+        // The caret tools with the style popover opened by "Aa".
+        capture_with_input(
+            &format!("e3-formatbar-styles-{name}"),
+            mode,
+            E3_SHORT,
+            caret,
+            &click_at(364., 656.),
+        );
+    }
+}
+
 fn write_gradient(path: &Path, width: u32, height: u32, from: [u8; 3], to: [u8; 3]) {
     let img = image::RgbaImage::from_fn(width, height, |x, y| {
         let t = (x as f32 / width as f32 + y as f32 / height as f32) / 2.;

@@ -7,6 +7,7 @@
 mod clipboard;
 mod editing;
 mod find;
+mod format_bar;
 mod image;
 mod ime;
 mod link;

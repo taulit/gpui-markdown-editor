@@ -8,6 +8,7 @@
 //! a popup field never reach the document's bindings.
 
 pub(super) mod find;
+pub(super) mod format_bar;
 pub(super) mod link;
 pub(super) mod slash;
 

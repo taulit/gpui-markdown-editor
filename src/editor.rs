@@ -110,6 +110,8 @@ pub struct MarkdownEditor {
     find: Option<ui::find::FindBar>,
     slash: Option<ui::slash::SlashMenu>,
     prompt: Option<ui::link::LinkPrompt>,
+    /// The style popover of the format bar is open.
+    style_menu: bool,
     /// The query of the find bar when it was closed.
     last_query: String,
     _subscriptions: [Subscription; 2],
@@ -166,6 +168,7 @@ impl MarkdownEditor {
             find: None,
             slash: None,
             prompt: None,
+            style_menu: false,
             last_query: String::new(),
             _subscriptions: subscriptions,
         }
@@ -488,6 +491,7 @@ impl Render for MarkdownEditor {
             .relative()
             .size_full()
             .child(document)
+            .children(self.render_format_bar(cx))
             .children(self.render_find(cx))
             .children(self.render_slash(window, cx))
             .children(self.render_prompt(window, cx))
