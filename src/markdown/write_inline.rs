@@ -1143,7 +1143,7 @@ fn delimiter_runs(
 /// `complete` tells that the line ends with this text. `first` is `true` for
 /// the first line of a block, which cannot be a setext underline or the
 /// delimiter row of a table.
-fn line_start_escape(line: &str, complete: bool, first: bool) -> Option<usize> {
+pub(crate) fn line_start_escape(line: &str, complete: bool, first: bool) -> Option<usize> {
     let bytes = line.as_bytes();
     let first_byte = *bytes.first()?;
     let space_at = |index: usize| match bytes.get(index) {

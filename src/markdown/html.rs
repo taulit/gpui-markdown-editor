@@ -9,6 +9,8 @@
 use std::cell::RefCell;
 
 use html5ever::tendril::StrTendril;
+
+use super::write_inline::line_start_escape;
 use html5ever::tokenizer::{
     BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
 };
@@ -26,8 +28,16 @@ use html5ever::tokenizer::{
 /// let md = html_to_markdown("<h2>Plan</h2><p>Buy <b>milk</b> and <a href=\"https://x.org\">more</a></p>");
 /// assert_eq!(md, "## Plan\n\nBuy **milk** and [more](https://x.org)\n");
 /// ```
+///
+/// Input beyond 8 MiB is ignored, and elements nested deeper than 64
+/// levels are flattened into their ancestor, so hostile input cannot
+/// exhaust memory or the stack.
 pub fn html_to_markdown(html: &str) -> String {
-    let root = parse(html);
+    let mut end = html.len().min(MAX_INPUT);
+    while !html.is_char_boundary(end) {
+        end -= 1;
+    }
+    let root = parse(&html[..end]);
     let blocks = render_blocks(&root.children, &Ctx::default());
     let mut out = blocks.join("\n\n");
     if !out.is_empty() {
@@ -96,16 +106,74 @@ const BLOCK: &[&str] = &[
     "address",
     "details",
     "summary",
+    "option",
+    "select",
 ];
 
+/// The longest input converted, in bytes.
+const MAX_INPUT: usize = 8 << 20;
+/// The deepest element nesting kept; deeper elements are flattened into
+/// their ancestor (their content stays).
+const MAX_DEPTH: usize = 64;
+
+/// HTML's implied end tags: a start tag `name` closes the innermost open
+/// element named in the first list, unless one of the second list (a
+/// scope boundary) is open inside it.
+fn implied_end(name: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
+    const SCOPE: &[&str] = &["table", "td", "th", "caption", "html", "template", "button"];
+    Some(match name {
+        "li" => (
+            &["li"],
+            &[
+                "ul", "ol", "table", "td", "th", "caption", "html", "template",
+            ],
+        ),
+        "dt" | "dd" => (
+            &["dt", "dd"],
+            &["dl", "table", "td", "th", "html", "template"],
+        ),
+        "tr" => (&["tr"], &["table", "html", "template"]),
+        "td" | "th" => (&["td", "th"], &["tr", "table", "html", "template"]),
+        "thead" | "tbody" | "tfoot" => {
+            (&["thead", "tbody", "tfoot"], &["table", "html", "template"])
+        }
+        "option" => (&["option"], &["select", "datalist", "html", "template"]),
+        "optgroup" => (&["option", "optgroup"], &["select", "html", "template"]),
+        _ if BLOCK.contains(&name) => (&["p"], SCOPE),
+        _ => return None,
+    })
+}
+
 /// Collects tokens into a tree. Unmatched end tags are ignored, unclosed
-/// elements end with their parent.
+/// elements end with their parent, and start tags close the elements HTML
+/// implicitly ends (`<li>a<li>b`, `<td>1<td>2`, `<p>a<p>b`).
 #[derive(Default)]
 struct TreeSink {
     stack: RefCell<Vec<Element>>,
+    /// Start tags dropped beyond [`MAX_DEPTH`], whose end tags are ignored.
+    dropped: RefCell<Vec<String>>,
 }
 
 impl TreeSink {
+    /// Closes the elements implicitly ended by a start tag `name`.
+    fn close_implied(stack: &mut Vec<Element>, name: &str) {
+        let Some((closes, boundary)) = implied_end(name) else {
+            return;
+        };
+        for depth in (1..stack.len()).rev() {
+            let open = stack[depth].name.as_str();
+            if closes.contains(&open) {
+                while stack.len() > depth {
+                    Self::close(stack);
+                }
+                return;
+            }
+            if boundary.contains(&open) {
+                return;
+            }
+        }
+    }
+
     fn close(stack: &mut Vec<Element>) {
         if stack.len() > 1
             && let Some(done) = stack.pop()
@@ -135,14 +203,19 @@ impl TokenSink for TreeSink {
                             name: name.clone(),
                             children: Vec::new(),
                         };
+                        Self::close_implied(&mut stack, &name);
+                        let raw =
+                            matches!(name.as_str(), "script" | "style" | "textarea" | "title");
                         if VOID.contains(&name.as_str()) || tag.self_closing {
                             if let Some(parent) = stack.last_mut() {
                                 parent.children.push(Node::Element(element));
                             }
+                        } else if stack.len() > MAX_DEPTH && !raw {
+                            self.dropped.borrow_mut().push(name);
                         } else {
                             stack.push(element);
                             // The tokenizer must not parse markup inside these.
-                            if matches!(name.as_str(), "script" | "style" | "textarea" | "title") {
+                            if raw {
                                 return TokenSinkResult::RawData(
                                     html5ever::tokenizer::states::RawKind::Rcdata,
                                 );
@@ -150,7 +223,10 @@ impl TokenSink for TreeSink {
                         }
                     }
                     TagKind::EndTag => {
-                        if let Some(depth) = stack.iter().rposition(|e| e.name == name)
+                        let mut dropped = self.dropped.borrow_mut();
+                        if let Some(i) = dropped.iter().rposition(|d| *d == name) {
+                            dropped.remove(i);
+                        } else if let Some(depth) = stack.iter().rposition(|e| e.name == name)
                             && depth > 0
                         {
                             while stack.len() > depth {
@@ -463,13 +539,30 @@ fn render_inline(node: &Node, ctx: &Ctx, out: &mut String) {
         Node::Text(text) => {
             // Whitespace collapses as in HTML.
             let mut last_space = out.ends_with(' ') || out.is_empty() || out.ends_with('\n');
-            for ch in text.chars() {
+            // Text at the start of a line must not read as block syntax
+            // (`- x`, `1. x`, `: x`, ...).
+            let line_start = out.rsplit('\n').next().is_some_and(|l| l.trim().is_empty());
+            let lead = text.len() - text.trim_start().len();
+            let escape_at = if line_start {
+                line_start_escape(text.trim_start(), true, false).map(|at| lead + at)
+            } else {
+                None
+            };
+            let mut chars = text.char_indices().peekable();
+            while let Some((i, ch)) = chars.next() {
                 if ch.is_whitespace() {
                     if !last_space {
                         out.push(' ');
                         last_space = true;
                     }
                 } else {
+                    let next = chars.peek().map(|(_, c)| *c);
+                    // `==` would open a highlight.
+                    if (escape_at == Some(i) || (ch == '=' && next == Some('=')))
+                        && !needs_escape(ch)
+                    {
+                        out.push('\\');
+                    }
                     escape_char(ch, out);
                     last_space = false;
                 }
@@ -599,11 +692,16 @@ fn longest_run(text: &str, ch: char) -> usize {
     longest
 }
 
-fn escape_char(ch: char, out: &mut String) {
-    if matches!(
+/// Characters that are escaped wherever they appear in text.
+fn needs_escape(ch: char) -> bool {
+    matches!(
         ch,
         '\\' | '*' | '_' | '`' | '[' | ']' | '<' | '>' | '~' | '#'
-    ) {
+    )
+}
+
+fn escape_char(ch: char, out: &mut String) {
+    if needs_escape(ch) {
         out.push('\\');
     }
     out.push(ch);
@@ -733,5 +831,94 @@ mod tests {
             html_to_markdown("<pre>a ``` b</pre>"),
             "````\na ``` b\n````\n"
         );
+    }
+
+    #[test]
+    fn deep_nesting_is_flattened() {
+        let html = "<div>".repeat(5000) + "deep" + &"</div>".repeat(5000);
+        assert_eq!(html_to_markdown(&html), "deep\n");
+        let html = "<blockquote>".repeat(5000) + "q";
+        let md = html_to_markdown(&html);
+        assert!(md.ends_with("q\n"));
+        let html = "<ul><li>".repeat(3000) + "x";
+        assert!(html_to_markdown(&html).trim_end().ends_with("- x"));
+        // Unclosed inline elements nest as deep.
+        let html = "<b><i>".repeat(5000) + "t";
+        assert!(html_to_markdown(&html).contains('t'));
+        // Content after a dropped element continues in its ancestor.
+        let html = "<div>".repeat(100) + "a" + &"</div>".repeat(100) + "<p>b</p>";
+        assert_eq!(html_to_markdown(&html), "a\n\nb\n");
+    }
+
+    #[test]
+    fn huge_input_is_cut() {
+        let html = "<p>x</p>".repeat((super::MAX_INPUT / 8) + 10);
+        let md = html_to_markdown(&html);
+        assert_eq!(md.matches('x').count(), super::MAX_INPUT / 8);
+    }
+
+    #[test]
+    fn implied_end_tags_make_siblings() {
+        let cases: &[(&str, &str)] = &[
+            ("<ul><li>a<li>b</ul>", "- a\n- b\n"),
+            (
+                "<ol><li>a<li>b<ul><li>c<li>d</ul><li>e</ol>",
+                "1. a\n2. b\n   - c\n   - d\n3. e\n",
+            ),
+            ("<p>a<p>b", "a\n\nb\n"),
+            ("<p>a<div>b</div>", "a\n\nb\n"),
+            (
+                "<table><tr><td>1<td>2<tr><td>3<td>4</table>",
+                "| 1 | 2 |\n| --- | --- |\n| 3 | 4 |\n",
+            ),
+            (
+                "<table><thead><tr><th>A<th>B<tbody><tr><td>1<td>2</table>",
+                "| A | B |\n| --- | --- |\n| 1 | 2 |\n",
+            ),
+            ("<dl><dt>t<dd>d<dt>u</dl>", "t\n\nd\n\nu\n"),
+            ("<select><option>a<option>b</select>", "a\n\nb\n"),
+        ];
+        for (html, md) in cases {
+            assert_eq!(html_to_markdown(html), *md, "for {html:?}");
+        }
+    }
+
+    #[test]
+    fn text_stays_literal() {
+        use crate::extension::Extensions;
+        use crate::extensions::{Highlight, Tag, WikiLink};
+        use crate::model::{BlockKind, Document};
+        for text in [
+            "- x",
+            "+ x",
+            "* x",
+            "1. x",
+            "2) x",
+            "# x",
+            "> x",
+            "==x==",
+            "a ==b== c",
+            "[[x]]",
+            "#tag",
+            ": x",
+            "---",
+            "-",
+            "~~~",
+            "[ ] x",
+            "a\\b",
+        ] {
+            let md = html_to_markdown(&format!("<p>{text}</p>"));
+            let doc = Document::parse_with(
+                &md,
+                Extensions::new(vec![Box::new(WikiLink), Box::new(Tag), Box::new(Highlight)]),
+            );
+            assert_eq!(doc.blocks().len(), 1, "{text:?} gave {md:?}");
+            let block = &doc.blocks()[0];
+            assert_eq!(*block.kind(), BlockKind::Paragraph, "{text:?} gave {md:?}");
+            assert_eq!(block.text(), text, "{text:?} gave {md:?}");
+            assert!(block.content().marks.is_empty(), "{text:?} gave {md:?}");
+        }
+        // After a line break as well.
+        assert_eq!(html_to_markdown("<p>a<br>- b</p>"), "a\\\n\\- b\n");
     }
 }
