@@ -21,6 +21,15 @@ use crate::event::EditorEvent;
 use crate::model::{CustomMarkId, Mark};
 
 /// Custom inline syntax: how to find it in text and how to write it back.
+///
+/// An extension contributes **marks** only: spans over ordinary text, found
+/// by [`parse_inline`](Self::parse_inline), written back by
+/// [`serialize_mark`](Self::serialize_mark), drawn with
+/// [`mark_style`](Self::mark_style), created by
+/// [`input_rule`](Self::input_rule), reported by [`click`](Self::click),
+/// plus entries from [`slash_items`](Self::slash_items). As of 0.1 it
+/// cannot add its own inline nodes (atoms that are not text, such as an
+/// embedded widget) or block renderers.
 pub trait Extension: Send + Sync + 'static {
     /// A unique, stable name, for example `"wikilink"`.
     fn name(&self) -> &'static str;

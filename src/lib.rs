@@ -379,7 +379,9 @@
 //! - Accessibility: the document, blocks and popups are AccessKit nodes with
 //!   roles, but the caret and the selected text are not reported.
 //! - Folding and block drag work on top-level blocks only.
-//! - Extensions add marks, not inline nodes or block renderers.
+//! - Extensions contribute marks only (parser, serializer, `mark_style`,
+//!   `input_rule`, `click`, `slash_items`); they cannot add their own
+//!   inline nodes or block renderers.
 //! - Up and Down skip rules and images (Left and Right select them).
 //! - Enter in a quote starts a new quote paragraph rather than leaving it.
 //! - Input methods are tested in simulation; dead keys, Compose and ibus

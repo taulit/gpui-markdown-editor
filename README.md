@@ -19,7 +19,7 @@ WYSIWYG Markdown editor component for GPUI (Zed's UI framework) – lossless rou
 - Images loaded asynchronously and resizable; attachments for links to local files.
 - Format bar, slash menu, link popover, find bar and completions for wiki links and tags, each switchable.
 - Heading folding and block drag and drop; folds and column widths are kept outside the Markdown (`DocMeta`).
-- Extensions for custom inline syntax (parser, serializer, style, input rule, click event, slash entries); wiki links, tags and highlights ship with the crate.
+- Extensions for custom inline syntax (parser, serializer, style, input rule, click event, slash entries); wiki links, tags and highlights ship with the crate. Extensions add marks only: their own inline nodes or block renderers are not possible yet.
 - A window-free document model for headless use: outline, tasks, tags, rewriting.
 - HTML to Markdown conversion for rich text (`markdown::html_to_markdown`).
 - Accessibility roles through AccessKit; every popup works with the keyboard; motion follows GPUI's reduced-motion setting.

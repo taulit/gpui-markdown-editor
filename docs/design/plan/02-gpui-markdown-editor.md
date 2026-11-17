@@ -77,6 +77,7 @@ pub enum Mark { Bold, Italic, Underline /* <u> */, Strike, Code, Highlight /* ==
   - Leerzeilen und Abstände zwischen unveränderten Blöcken bleiben erhalten.
 - **Erweiterungen** (Trait `Extension`):
   - eigene Inline-Knoten und Marks mit Parser, Serializer, Renderer und Eingaberegeln
+    - *Ab 0.1.0 nicht umgesetzt:* eigene Inline-Knoten und Block-Renderer. Erweiterungen liefern nur Marks (Parser, Serializer, `mark_style`, `input_rule`, `click`, `slash_items`).
   - mitgeliefert, aber optional: `WikiLink` (`[[Titel]]`), `Tag` (`#tag`), `Highlight`
   - Sheaf hängt dort Autovervollständigung an (Callback für Vorschläge)
 
