@@ -1,0 +1,7 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{r\"\n        \\[text] is escaped because [text] is defined.\n\n        [text]: /url\n    \"})"
+---
+\[text\] is escaped because [text] is defined.
+
+[text]: /url

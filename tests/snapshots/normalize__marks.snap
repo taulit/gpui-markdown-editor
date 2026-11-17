@@ -1,0 +1,15 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        __bold__ _italic_ ___both___ ~strike~ ~~strike~~ `code` <u>under</u>\n\n        **bold _nested italic_ bold** *italic **nested bold** italic*\n\n        **bold***italic*~~strike~~`code` and *a***b***c*\n\n        **bold `code` [link](url)** and [**bold link** *italic*](url 'title')\n\n        <u>under **bold** *italic*</u> and **<u>both</u>**\n\n        *italic\n        over two lines* and <http://auto.link> and <me@example.com>\n    \"})"
+---
+**bold** *italic* ***both*** ~~strike~~ ~~strike~~ `code` <u>under</u>
+
+**bold *nested italic* bold** *italic **nested bold** italic*
+
+**bold***italic*~~strike~~`code` and *a***b***c*
+
+**bold `code` [link](url)** and [**bold link** *italic*](url "title")
+
+<u>under **bold** *italic*</u> and **<u>both</u>**
+
+*italic over two lines* and <http://auto.link> and <me@example.com>

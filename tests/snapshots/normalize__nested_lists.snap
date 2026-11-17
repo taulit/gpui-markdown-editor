@@ -1,0 +1,25 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        * one\n            * nested deeply indented\n                * third level\n            * back\n\n              paragraph in nested item\n        * two\n            1. ordered child\n            2. second\n        9. nine\n        10. ten\n            continuation line\n\n            second paragraph of ten\n\n                code in ten\n        11. eleven\n            > quote in eleven\n    \"})"
+---
+- one
+  - nested deeply indented
+    - third level
+  - back
+
+    paragraph in nested item
+- two
+  1. ordered child
+  2. second
+
+9. nine
+10. ten continuation line
+
+    second paragraph of ten
+
+    ```
+    code in ten
+    ```
+11. eleven
+
+    > quote in eleven

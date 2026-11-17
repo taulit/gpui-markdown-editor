@@ -1,0 +1,19 @@
+---
+source: tests/normalize.rs
+expression: "edited(source, &[0])"
+---
+Shopping:
+- milk
+- eggs
+## Next
+text
+> quote
+⏎
+======== edited [0]
+Shopping:
+- milk
+- eggs
+## Next
+text
+> quote
+⏎

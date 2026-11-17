@@ -1,0 +1,11 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        * [ ] open\n        * [X] done with capital X\n        + [x] done\n            - [ ] nested open\n        1. [ ] numbered task\n        - [ ]\n        - \\\\[ ] not a task\n    \"})"
+---
+- [ ] open
+- [x] done with capital X
+- [x] done
+  - [ ] nested open
+- [ ] numbered task
+- [ ] 
+- \[ ] not a task

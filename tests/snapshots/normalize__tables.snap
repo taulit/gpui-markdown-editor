@@ -1,0 +1,14 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        |left|center|right|none|\n        |:-|:-:|-:|-|\n        |a|b|c|d|\n        |longer cell|x|1234567|`a\\\\|b`|\n        |short||**bold**|\n\n        Name | Wert\n        --- | ---\n        Größe | 日本語\n        emoji | 🎉🎉\n    \"})"
+---
+| left        | center |    right | none   |
+| :---------- | :----: | -------: | ------ |
+| a           |   b    |        c | d      |
+| longer cell |   x    |  1234567 | `a\|b` |
+| short       |        | **bold** |        |
+
+| Name  | Wert   |
+| ----- | ------ |
+| Größe | 日本語 |
+| emoji | 🎉🎉   |

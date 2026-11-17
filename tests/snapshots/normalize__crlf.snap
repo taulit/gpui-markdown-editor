@@ -1,0 +1,23 @@
+---
+source: tests/normalize.rs
+expression: "edited(source, &[1, 3])"
+---
+# Title␍
+␍
+* a␍
+* b␍
+  * c␍
+␍
+hard  ␍
+break␍
+⏎
+======== edited [1, 3]
+# Title␍
+␍
+* a␍
+* b␍
+  * c␍
+␍
+hard\␍
+break␍
+⏎

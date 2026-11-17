@@ -1,0 +1,11 @@
+---
+source: tests/normalize.rs
+expression: "edited(source, &[1])"
+---
+[BOM]a
+
+__last__⏎
+======== edited [1]
+[BOM]a
+
+**last**⏎
