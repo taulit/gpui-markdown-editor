@@ -328,6 +328,10 @@ impl MarkdownEditor {
         let pos = match &self.state.selection {
             Selection::Text { head, .. } => *head,
             Selection::All => return,
+            Selection::Cells { head, .. } => TextPos {
+                block: *head,
+                offset: 0,
+            },
             Selection::Node(id) => TextPos {
                 block: *id,
                 offset: 0,

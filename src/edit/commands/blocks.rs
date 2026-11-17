@@ -302,6 +302,7 @@ impl EditorState {
     pub(crate) fn move_block(&mut self, down: bool) -> bool {
         let mut ids = match &self.selection {
             Selection::Node(id) => vec![*id],
+            Selection::Cells { .. } => Vec::new(),
             Selection::Text { .. } | Selection::All => self.selected_roots(),
         };
         if ids.is_empty() {
@@ -360,6 +361,7 @@ impl EditorState {
             Selection::Node(id) => return Some(*id),
             Selection::All => return self.doc.blocks.last().map(|b| b.id),
             Selection::Text { .. } => self.ordered()?.1,
+            Selection::Cells { head, .. } => return self.cell_at(*head).map(|at| at.table),
         };
         match self.locate(pos.block)? {
             Loc::Block(_) => Some(pos.block),

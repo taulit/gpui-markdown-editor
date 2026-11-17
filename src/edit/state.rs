@@ -200,7 +200,7 @@ impl EditorState {
                 }
             }
             Selection::All => Some((self.first_pos()?, self.last_pos()?)),
-            Selection::Node(_) => None,
+            Selection::Node(_) | Selection::Cells { .. } => None,
         }
     }
 
@@ -248,6 +248,17 @@ impl EditorState {
                 Loc::Cell { .. } => None,
             },
             Selection::All => (!self.doc.blocks.is_empty()).then_some(Selection::All),
+            Selection::Cells { anchor, head } => {
+                let (a, h) = (self.cell_at(anchor)?, self.cell_at(head)?);
+                if a.table != h.table {
+                    return None;
+                }
+                Some(if anchor == head {
+                    Selection::caret(self.end_of(head))
+                } else {
+                    Selection::Cells { anchor, head }
+                })
+            }
         }
     }
 
@@ -343,6 +354,14 @@ impl EditorState {
                     None => return false,
                 }
             }
+            Selection::Cells { head, .. } => Selection::caret(if forward {
+                self.end_of(head)
+            } else {
+                TextPos {
+                    block: head,
+                    offset: 0,
+                }
+            }),
             Selection::Node(id) => {
                 let Some(loc) = self.locate(id) else {
                     return false;
@@ -673,6 +692,7 @@ impl EditorState {
         match &self.selection {
             Selection::Node(id) => Some(*id),
             Selection::All => None,
+            Selection::Cells { head, .. } => self.cell_at(*head).map(|at| at.table),
             Selection::Text { head, .. } => match self.locate(head.block)? {
                 Loc::Block(_) => Some(head.block),
                 Loc::Cell { table, .. } => order::block_at(&self.doc.blocks, &table).map(|b| b.id),

@@ -244,6 +244,16 @@ pub(crate) fn build_frame(
                 }
             }
         }
+        Some(Selection::Cells { anchor, head }) => {
+            let cells = cell_rect_ids(doc, *anchor, *head);
+            for v in &visible {
+                for (id, kind, r) in &v.layout.rects {
+                    if *kind == super::layout::RectKind::Cell && cells.contains(id) {
+                        frame.under.push(fill(*r + v.origin, style.selection_color));
+                    }
+                }
+            }
+        }
         Some(Selection::Node(id)) => {
             for v in &visible {
                 if let Some((_, kind, r)) = v.layout.rects.iter().find(|(r, _, _)| r == id) {
@@ -329,6 +339,38 @@ fn paint_range(
             }
         }
     }
+}
+
+/// The cells of the rectangle spanned by two cells of one table.
+fn cell_rect_ids(doc: &Document, anchor: BlockId, head: BlockId) -> Vec<BlockId> {
+    for block in doc.blocks() {
+        let BlockKind::Table(t) = &block.kind else {
+            continue;
+        };
+        let find = |id: BlockId| {
+            t.rows
+                .iter()
+                .enumerate()
+                .find_map(|(r, row)| row.iter().position(|c| c.id == id).map(|c| (r, c)))
+        };
+        let (Some(a), Some(h)) = (find(anchor), find(head)) else {
+            continue;
+        };
+        let (rows, cols) = (a.0.min(h.0)..=a.0.max(h.0), a.1.min(h.1)..=a.1.max(h.1));
+        return t
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(r, _)| rows.contains(r))
+            .flat_map(|(_, row)| {
+                row.iter()
+                    .enumerate()
+                    .filter(|(c, _)| cols.contains(c))
+                    .map(|(_, cell)| cell.id)
+            })
+            .collect();
+    }
+    Vec::new()
 }
 
 /// Document order key of a node that may be outside the visible blocks.

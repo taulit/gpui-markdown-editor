@@ -74,6 +74,7 @@ pub(super) fn caret(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext)
         match &state.selection {
             Selection::Node(_) => "<node>".to_string(),
             Selection::All => "<all>".to_string(),
+            Selection::Cells { .. } => "<cells>".to_string(),
             Selection::Text { anchor, head } => {
                 let mut text = state.text_of(head.block).unwrap().text.clone();
                 let mut marks = vec![(head.offset, '‸')];

@@ -196,6 +196,20 @@ impl MarkdownEditor {
             start: pos,
             end: pos,
         });
+        // From one cell into another of the same table: a cell rectangle.
+        let (from, to) = (origin.start.block, pos.block);
+        if from != to
+            && origin.start.block == origin.end.block
+            && let (Some(a), Some(b)) = (self.state.cell_at(from), self.state.cell_at(to))
+            && a.table == b.table
+        {
+            self.state.set_selection(Selection::Cells {
+                anchor: from,
+                head: to,
+            });
+            self.after_change(false, window, cx);
+            return;
+        }
         let selection = if self.state.cmp_pos(pos, origin.start) == Ordering::Less {
             Selection::Text {
                 anchor: origin.end,

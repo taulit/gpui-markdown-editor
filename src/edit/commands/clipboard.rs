@@ -55,6 +55,9 @@ impl EditorState {
                 .map(|block| vec![detach(block.clone())])
                 .unwrap_or_default(),
             Selection::All => self.doc.blocks.iter().cloned().map(detach_all).collect(),
+            Selection::Cells { anchor, head } => {
+                self.cells_block(*anchor, *head).into_iter().collect()
+            }
             Selection::Text { .. } => {
                 let Some((start, end)) = self.ordered() else {
                     return String::new();
@@ -145,6 +148,7 @@ impl EditorState {
         if text.is_empty() {
             return false;
         }
+        self.collapse_cells();
         let selected =
             matches!(&self.selection, Selection::Text { anchor, head } if anchor != head);
         if selected && is_url(text.trim()) && !self.selected_segments().is_empty() {
@@ -167,6 +171,7 @@ impl EditorState {
     /// is only paragraphs is inserted inline: the first paragraph joins the
     /// current block, the text after the caret joins the last.
     pub(crate) fn insert_markdown(&mut self, markdown: &str) -> bool {
+        self.collapse_cells();
         // Spaces at the edges of the text are content (see `copy_text`).
         let core = markdown.trim_matches([' ', '\t']);
         let lead = &markdown[..markdown.len() - markdown.trim_start_matches([' ', '\t']).len()];
@@ -214,7 +219,7 @@ impl EditorState {
             let blocks: Vec<Block> = blocks.into_iter().map(|b| fresh(tr, b)).collect();
             match selection {
                 Selection::Node(id) => insert_blocks_after(tr, id, blocks),
-                Selection::Text { .. } | Selection::All => {
+                Selection::Text { .. } | Selection::All | Selection::Cells { .. } => {
                     let all = selection == Selection::All;
                     let pos = delete_selected(tr, all, range)?;
                     if tr.is_cell(pos.block) {

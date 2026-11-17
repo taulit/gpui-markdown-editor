@@ -105,3 +105,78 @@ fn marks_and_selection_in_a_cell(cx: &mut TestAppContext) {
         "| a       | bb  |\n| ------- | --- |\n| **cc**c | d   |\n"
     );
 }
+
+const GRID: &str = "| h1 | h2 | h3 |\n|---|:-:|---|\n| a | b | c |\n| d | e | f |\n";
+
+/// Drags from the middle of one cell to the middle of another.
+fn drag_cells(
+    editor: &Entity<MarkdownEditor>,
+    cx: &mut VisualTestContext,
+    from: BlockId,
+    to: BlockId,
+) {
+    let a = bounds_of(editor, cx, from).center();
+    let b = bounds_of(editor, cx, to).center();
+    cx.simulate_mouse_down(a, MouseButton::Left, Modifiers::none());
+    cx.simulate_mouse_move(b, MouseButton::Left, Modifiers::none());
+    cx.simulate_mouse_up(b, MouseButton::Left, Modifiers::none());
+}
+
+#[gpui::test]
+fn dragging_across_cells_selects_a_rectangle(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, GRID);
+    let (h2, f) = (cell(&editor, cx, 0, 0, 1), cell(&editor, cx, 0, 2, 2));
+    drag_cells(&editor, cx, h2, f);
+    let selection = editor.read_with(cx, |e, _| e.state.selection.clone());
+    assert_eq!(
+        selection,
+        Selection::Cells {
+            anchor: h2,
+            head: f
+        }
+    );
+
+    press(cx, "secondary-c");
+    let copied = cx.read_from_clipboard().and_then(|i| i.text()).unwrap();
+    assert_eq!(
+        copied,
+        "| h2  | h3  |\n| :-: | --- |\n|  b  | c   |\n|  e  | f   |"
+    );
+
+    press(cx, "delete");
+    assert_eq!(
+        md(&editor, cx),
+        "| h1  |     |     |\n| --- | :-: | --- |\n| a   |     |     |\n| d   |     |     |\n"
+    );
+    assert_eq!(caret(&editor, cx), "‸");
+    press(cx, "secondary-z");
+    assert_eq!(md(&editor, cx), GRID);
+}
+
+#[gpui::test]
+fn typing_over_a_rectangle_replaces_the_anchor_cell(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, GRID);
+    let (a, e) = (cell(&editor, cx, 0, 1, 0), cell(&editor, cx, 0, 2, 1));
+    drag_cells(&editor, cx, a, e);
+    cx.simulate_input("x");
+    assert_eq!(caret(&editor, cx), "x‸");
+    assert_eq!(
+        md(&editor, cx),
+        "| h1  | h2  | h3  |\n| --- | :-: | --- |\n| x   |  b  | c   |\n| d   |  e  | f   |\n"
+    );
+    // Arrows collapse a rectangle to its head cell.
+    drag_cells(&editor, cx, a, e);
+    press(cx, "right");
+    assert_eq!(caret(&editor, cx), "e‸");
+}
+
+#[gpui::test]
+fn cut_a_rectangle(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, GRID);
+    let (b, c) = (cell(&editor, cx, 0, 1, 1), cell(&editor, cx, 0, 1, 2));
+    drag_cells(&editor, cx, c, b);
+    press(cx, "secondary-x");
+    let copied = cx.read_from_clipboard().and_then(|i| i.text()).unwrap();
+    assert_eq!(copied, "|  b  | c   |\n| :-: | --- |");
+    assert_eq!(caret(&editor, cx), "‸");
+}
