@@ -163,6 +163,17 @@ impl DocumentView {
         self.state.borrow().bounds
     }
 
+    /// The load state of the image `src` as text (`Loading`, `Ready(WxH)`,
+    /// `Failed`), and how many image states the view holds.
+    #[cfg(test)]
+    pub fn image_state(&self, src: &str) -> (Option<String>, usize) {
+        let state = self.state.borrow();
+        (
+            state.images.get(src).map(|i| format!("{i:?}")),
+            state.images.len(),
+        )
+    }
+
     /// Counters for tests and timing.
     #[cfg(test)]
     pub fn stats(&self) -> ViewStats {
