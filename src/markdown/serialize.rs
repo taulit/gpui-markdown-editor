@@ -14,6 +14,18 @@ use super::prefix::normalize_newlines;
 use super::write_inline::{InlineCtx, InlineWriter, write_alt, write_destination, write_title};
 use crate::model::{Align, Block, BlockKind, Document, ImageData, TableData};
 
+/// How an empty paragraph between blocks is written: Markdown has no empty
+/// paragraphs, and blank lines alone would merge the blocks around it (two
+/// lists into one loose list).
+pub(crate) const EMPTY_PARAGRAPH: &str = "&#32;";
+
+/// An empty paragraph: written as [`EMPTY_PARAGRAPH`] between blocks, left
+/// out at the start and end of the document, where it is only a place to
+/// type.
+fn is_empty_paragraph(block: &Block) -> bool {
+    block.kind == BlockKind::Paragraph && block.content.text.is_empty() && block.children.is_empty()
+}
+
 /// Which blocks are written anew.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Mode {
@@ -184,8 +196,25 @@ fn is_unclosed_fence(text: &str) -> bool {
 /// Serializes `document`.
 pub(crate) fn serialize(document: &Document, mode: Mode) -> String {
     let source = &*document.source;
-    let blocks = &document.blocks;
     let bom = if source.starts_with(BOM) { BOM } else { "" };
+    let all = &document.blocks;
+    let first = all.iter().position(|b| !is_empty_paragraph(b));
+    let last = all.iter().rposition(|b| !is_empty_paragraph(b));
+    let blocks = match (first, last) {
+        (Some(first), Some(last)) => &all[first..=last],
+        _ if all.is_empty() => all.as_slice(),
+        _ => {
+            // Nothing but empty paragraphs.
+            let body = &source[bom.len()..];
+            let eol = if uses_crlf(source) { "\r\n" } else { "\n" };
+            let end = if is_blank(body) || body.ends_with(['\n', '\r']) {
+                eol
+            } else {
+                ""
+            };
+            return format!("{bom}{end}");
+        }
+    };
     if blocks.is_empty() {
         return if is_blank(&source[bom.len()..]) {
             source.to_string()
@@ -502,6 +531,7 @@ impl Writer<'_> {
             ..InlineCtx::default()
         };
         match &block.kind {
+            BlockKind::Paragraph if is_empty_paragraph(block) => EMPTY_PARAGRAPH.to_string(),
             BlockKind::Paragraph => self.inline.write(&block.content, line),
             BlockKind::Heading(level) => self.heading(block, *level),
             BlockKind::BulletItem => {

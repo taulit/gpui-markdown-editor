@@ -115,14 +115,14 @@ fn insert_rule_image_and_table() {
             alt: "Cat".into(),
         },
     );
-    assert_eq!(md(&state), "Intro\n\n![Cat](cat.png)\n\n\n");
+    assert_eq!(md(&state), "Intro\n\n![Cat](cat.png)\n");
 
     let mut state = ed("Intro‸\n");
     exec(&mut state, Command::InsertTable { rows: 2, cols: 2 });
     type_str(&mut state, &mut Clock::new(), "h");
     assert_eq!(
         md(&state),
-        "Intro\n\n| h   |     |\n| --- | --- |\n|     |     |\n\n\n"
+        "Intro\n\n| h   |     |\n| --- | --- |\n|     |     |\n"
     );
 }
 

@@ -80,7 +80,7 @@ fn task_rules() {
 fn quote_code_and_rule_rules() {
     block_rule("> ", "said", "> said\n");
     block_rule("```", "code", "```\ncode\n```\n");
-    block_rule("---", "", "---\n\n\n");
+    block_rule("---", "", "---\n");
 }
 
 #[test]

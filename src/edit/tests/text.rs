@@ -156,7 +156,7 @@ fn enter_in_an_empty_item_outdents_and_then_ends_the_list() {
     enter(&mut state);
     assert_eq!(md(&state), "- a\n  - b\n-\n");
     enter(&mut state);
-    assert_eq!(md(&state), "- a\n  - b\n\n\n");
+    assert_eq!(md(&state), "- a\n  - b\n");
     type_str(&mut state, &mut Clock::new(), "text");
     assert_eq!(md(&state), "- a\n  - b\n\ntext\n");
 }
@@ -170,7 +170,7 @@ fn enter_at_the_end_of_a_heading_creates_a_paragraph() {
     let mut state = ed("# ‸Title\n");
     enter(&mut state);
     assert_eq!(caret(&state), "‸Title");
-    assert_eq!(md(&state), "\n\n# Title\n");
+    assert_eq!(md(&state), "# Title\n");
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn enter_in_code_inserts_newlines_and_exits_on_an_empty_last_line() {
     let mut state = typed("```\nlet x‸\n```\n", "\n");
     assert_eq!(md(&state), "```\nlet x\n\n```\n");
     enter(&mut state);
-    assert_eq!(md(&state), "```\nlet x\n```\n\n\n");
+    assert_eq!(md(&state), "```\nlet x\n```\n");
     type_str(&mut state, &mut Clock::new(), "after");
     assert_eq!(md(&state), "```\nlet x\n```\n\nafter\n");
 }
@@ -338,4 +338,28 @@ fn blank_lines_in_pasted_text_make_no_empty_paragraphs() {
     state.insert_plain_text("x\n\n\ny");
     assert_eq!(md(&state), "ax\n\nyb\n");
     assert_eq!(state.doc.blocks.len(), 2);
+}
+
+#[test]
+fn enter_in_an_empty_middle_item_round_trips() {
+    let mut state = ed("- a\n- ‸\n- c\n");
+    enter(&mut state);
+    let markdown = md(&state);
+    assert_eq!(markdown, "- a\n\n&#32;\n- c\n");
+    let again = Document::parse_with(&markdown, extensions());
+    assert_eq!(again.blocks.len(), 3);
+    assert_eq!(again.blocks[1].kind, BlockKind::Paragraph);
+    assert!(again.blocks[1].content.text.is_empty());
+    let normalized = state.doc.normalized();
+    assert_eq!(
+        Document::parse_with(&normalized, extensions()).normalized(),
+        normalized
+    );
+}
+
+#[test]
+fn an_empty_trailing_paragraph_does_not_change_the_markdown() {
+    let mut state = ed("Intro‸\n");
+    state.exec(&crate::command::Command::InsertRule, Instant::now());
+    assert_eq!(md(&state), "Intro\n\n---\n");
 }
