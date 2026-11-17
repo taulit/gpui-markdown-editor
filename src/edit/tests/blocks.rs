@@ -20,7 +20,10 @@ fn set_block_converts_and_toggles() {
     let mut state = ed("one‸\n");
     assert!(exec(&mut state, Command::SetBlock(BlockKind::Heading(2))));
     assert_eq!(md(&state), "## one\n");
-    exec(&mut state, Command::SetBlock(BlockKind::Heading(2)));
+    // Another level changes the level, the same level toggles back.
+    exec(&mut state, Command::SetBlock(BlockKind::Heading(1)));
+    assert_eq!(md(&state), "# one\n");
+    exec(&mut state, Command::SetBlock(BlockKind::Heading(1)));
     assert_eq!(md(&state), "one\n");
 }
 

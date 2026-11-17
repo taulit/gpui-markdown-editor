@@ -13,8 +13,14 @@ use crate::model::{Align, Block, BlockId, BlockKind, Cell, ImageData, Inline, Ta
 /// The most rows or columns [`EditorState::insert_table`] creates.
 const MAX_TABLE_SIZE: usize = 64;
 
+/// Whether a block of kind `a` already is what `b` asks for: the same
+/// variant, and for headings the same level (H1 -> H2 changes the level,
+/// H2 -> H2 toggles back to a paragraph).
 fn same_variant(a: &BlockKind, b: &BlockKind) -> bool {
-    std::mem::discriminant(a) == std::mem::discriminant(b)
+    match (a, b) {
+        (BlockKind::Heading(x), BlockKind::Heading(y)) => x == y,
+        _ => std::mem::discriminant(a) == std::mem::discriminant(b),
+    }
 }
 
 impl EditorState {
