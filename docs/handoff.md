@@ -15,29 +15,23 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-- E2 is merged (PR #4, tag `v0.0.3`).
-- E3 on `phase/e3-blocks-ui` (rebased on `main`, pushed). Part 1 (table editing, column widths in `DocMeta`,
-  image loading and resize) is done and committed; gate checks green. Part 2, a sub-agent: slash menu, format
-  bar, link popover, find bar, folding, HTML/image paste, block drag, extension hooks, accessibility roles
-  (commits `feat(ui): …` etc.). After it: gate checks, bug-review, simplicity-review, spec-review, version
-  bump and tag `v0.0.4`, PR against `main`.
+Nothing. E3 is complete on `phase/e3-blocks-ui` (tag `v0.0.4`), PR open against `main`, waiting for the user.
 
 ## Next
 
-0. Steps 1 and 2 are done; continue at 3 once the E2 PR is merged (rebase E3 onto `main` then).
-1. Verify the fixes: `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`,
-   `cargo test --all-features`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`, `cargo deny check`,
-   `scripts/screenshot.sh` (look at the PNGs).
-2. Open the E2 PR against `main` (template in `.github/`, screenshots light and dark, measured keystroke time:
-   0.35 ms median in a 10,000-line document, budget 4 ms, reported by the wiring agent, not re-measured).
-   Bump the version, add a CHANGELOG entry and tag (e.g. `v0.0.3`) so Sheaf gets the WYSIWYG editor; update `docs/STATUS.md`.
-3. E3 on `phase/e3-…` branched from E2: tables (editing, handles, column widths → `DocMeta`), images (loading,
-   resize, `resolve_src`, `on_image`), HTML/image paste, drag, slash menu, format bar, link popover, find bar,
-   folding, extension hooks, accessibility roles (AccessKit is available). Gate: all features in `examples/notes.rs`.
-   One bug-review, plus simplicity-review and spec-review.
-4. E4: criterion benchmarks, `docs/performance.md`, README with GIF, docs, reviews, `docs/release-checklist.md`, tag `v0.1.0`.
+1. After the E3 PR is merged: branch `phase/e4-release` from `main`.
+2. E4: criterion benchmarks and `docs/performance.md` (keystroke + frame in a 10,000-line document measured
+   at 0.62 ms median, budget 4 ms), README with GIF, shortcut table and comparison (plan §13), popup motion
+   (250 ms ease-out) and checkbox press spring (plan 04), docs pass, final bug/spec/simplicity reviews,
+   `docs/release-checklist.md`, tag `v0.1.0`. No crates.io publishing (the user does that).
+3. Apply the user's answers to the pending decisions listed in `docs/STATUS.md`.
 
 ## Open, known and accepted for now
+
+- gpui-pre 0.3.12 exposes no HTML clipboard format; `markdown::html_to_markdown` exists but paste never reaches it.
+- AccessKit: caret and selection are not reported (gpui's synthetic nodes are leaves).
+- Folding and block drag work on top-level blocks only. Extensions can add marks, not inline nodes or block renderers.
+- Attachments are a paragraph that is only a link to a local non-image file (the plan does not define the syntax).
 
 - An empty paragraph between blocks is saved as `&#32;` (Markdown has no empty paragraph). Open question for the
   user: keep, or drop empty paragraphs on save.
