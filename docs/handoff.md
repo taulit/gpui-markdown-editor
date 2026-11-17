@@ -15,17 +15,19 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-E3 PR: https://github.com/taulit/gpui-markdown-editor/pull/5 (tag `v0.0.4`), waiting for the user.
-E4 part 1 runs on `phase/e4-release` (stacked on E3): a sub-agent does benchmarks, `docs/performance.md`, motion, README and docs. Rebase onto `main` once PR 5 is merged.
+- E3 PR: https://github.com/taulit/gpui-markdown-editor/pull/5 (tag `v0.0.4`), CI green, waiting for the user to merge.
+- E4 on `phase/e4-release` (stacked on E3, pushed): benchmarks and `docs/performance.md`, popup and checkbox
+  motion, crate guide, README with GIF, `docs/release-checklist.md`, `examples/headless.rs`. Gate checks green
+  (284 lib tests). A cold bug review of the E4 diff is the last open step before its PR.
 
 ## Next
 
-1. After the E3 PR is merged: branch `phase/e4-release` from `main`.
-2. E4: criterion benchmarks and `docs/performance.md` (keystroke + frame in a 10,000-line document measured
-   at 0.62 ms median, budget 4 ms), README with GIF, shortcut table and comparison (plan §13), popup motion
-   (250 ms ease-out) and checkbox press spring (plan 04), docs pass, final bug/spec/simplicity reviews,
-   `docs/release-checklist.md`, tag `v0.1.0`. No crates.io publishing (the user does that).
-3. Apply the user's answers to the pending decisions listed in `docs/STATUS.md`.
+1. When PR 5 is merged: `git rebase --onto origin/main v0.0.4 phase/e4-release`, push, open the E4 PR against `main`
+   (do not open it earlier against the E3 branch; a stacked PR was merged into the wrong base once).
+2. Apply the user's answers to the four pending decisions in `docs/STATUS.md`, then bump to 0.1.0, changelog,
+   tag `v0.1.0` (see `docs/release-checklist.md`). No crates.io publishing (the user does that).
+3. Known performance edge: opening 1 MB takes about 31 ms on a quiet machine (budget 50 ms) but 57–66 ms under
+   heavy load; parsing is about 35 ms of it.
 
 ## Open, known and accepted for now
 
