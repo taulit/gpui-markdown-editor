@@ -36,6 +36,11 @@ pub(crate) struct Prepaint {
     frame: Frame,
     hitbox: Hitbox,
     cursor: CursorStyle,
+    /// The accessibility nodes, only while assistive technology is active.
+    a11y: Vec<super::a11y::A11yBlock>,
+    scale: f32,
+    /// Synthetic node ids of checkboxes, for their click action.
+    checkboxes: Vec<(gpui::accesskit::NodeId, crate::model::BlockId)>,
 }
 
 /// The mouse cursor over `p`: a pointer over checkboxes, and over links
@@ -77,7 +82,52 @@ impl<T: ViewSource> Element for DocumentElement<T> {
     type PrepaintState = Prepaint;
 
     fn id(&self) -> Option<ElementId> {
-        None
+        Some("markdown-document".into())
+    }
+
+    fn a11y_role(&self) -> Option<gpui::Role> {
+        Some(gpui::Role::Document)
+    }
+
+    fn write_a11y_info(&self, node: &mut gpui::accesskit::Node) {
+        node.set_label("Document");
+    }
+
+    fn a11y_synthetic_children(
+        &mut self,
+        prepaint: &mut Self::PrepaintState,
+        builder: &mut gpui::A11ySubtreeBuilder,
+    ) {
+        let scale = f64::from(prepaint.scale);
+        prepaint.checkboxes.clear();
+        for block in &prepaint.a11y {
+            let mut node = gpui::accesskit::Node::new(block.role);
+            node.set_label(block.label.clone());
+            let b = block.bounds;
+            node.set_bounds(gpui::accesskit::Rect {
+                x0: f64::from(b.origin.x.as_f32()) * scale,
+                y0: f64::from(b.origin.y.as_f32()) * scale,
+                x1: f64::from((b.origin.x + b.size.width).as_f32()) * scale,
+                y1: f64::from((b.origin.y + b.size.height).as_f32()) * scale,
+            });
+            if let Some(level) = block.level {
+                node.set_level(level);
+            }
+            if block.selected {
+                node.set_selected(true);
+            }
+            let id = builder.synthetic_node_id(block.id);
+            if let Some(checked) = block.toggled {
+                node.set_toggled(if checked {
+                    gpui::Toggled::True
+                } else {
+                    gpui::Toggled::False
+                });
+                node.add_action(gpui::AccessibleAction::Click);
+                prepaint.checkboxes.push((id, block.id));
+            }
+            builder.push_child(id, node);
+        }
     }
 
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
@@ -118,10 +168,18 @@ impl<T: ViewSource> Element for DocumentElement<T> {
         let input = self.source.read(cx).view_input();
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
         let cursor = cursor_at(&self.view, &input, window.mouse_position(), window, cx);
+        let a11y = if window.is_a11y_active() {
+            self.view.a11y_nodes(&input, &ts)
+        } else {
+            Vec::new()
+        };
         Prepaint {
             frame,
             hitbox,
             cursor,
+            a11y,
+            scale: window.scale_factor(),
+            checkboxes: Vec::new(),
         }
     }
 
@@ -141,6 +199,12 @@ impl<T: ViewSource> Element for DocumentElement<T> {
             ElementInputHandler::new(bounds, self.source.clone()),
             cx,
         );
+        for (node, block) in prepaint.checkboxes.drain(..) {
+            let source = self.source.clone();
+            window.on_a11y_action(node, gpui::AccessibleAction::Click, move |_, window, cx| {
+                source.update(cx, |source, cx| source.a11y_toggle(block, window, cx));
+            });
+        }
         let hitbox = prepaint.hitbox.clone();
         let cursor = prepaint.cursor;
         window.set_cursor_style(cursor, &hitbox);

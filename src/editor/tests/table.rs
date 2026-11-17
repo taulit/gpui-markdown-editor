@@ -416,3 +416,25 @@ fn columns_size_to_their_content(cx: &mut TestAppContext) {
     assert_eq!(widths[0], 48.);
     assert!(widths.iter().sum::<f32>() <= 604.5, "{widths:?}");
 }
+
+#[gpui::test]
+fn row_menu_works_with_the_keyboard(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, GRID);
+    let d = cell(&editor, cx, 0, 2, 0);
+    select(&editor, cx, pos(d, 0), pos(d, 0));
+    let handle = affordance_point(&editor, cx, |a| {
+        matches!(a, Affordance::RowHandle { row: 2, .. })
+    });
+    cx.simulate_click(handle, Modifiers::none());
+    // Insert above, Insert below, Move up: Down twice, then Up wraps to the
+    // last entry and Down comes back.
+    press(cx, "down down up down enter");
+    assert!(editor.read_with(cx, |e, _| e.table_menu.is_none()));
+    assert_eq!(
+        md(&editor, cx),
+        "| h1  | h2  | h3  |\n| --- | :-: | --- |\n| d   |  e  | f   |\n| a   |  b  | c   |\n"
+    );
+    cx.simulate_click(handle, Modifiers::none());
+    press(cx, "escape");
+    assert!(editor.read_with(cx, |e, _| e.table_menu.is_none()));
+}

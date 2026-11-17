@@ -2,7 +2,8 @@
 
 use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
-    Pixels, Point, SharedString, Styled as _, Window, anchored, deferred, div, point, px,
+    Pixels, Point, SharedString, StatefulInteractiveElement as _, Styled as _, Window, anchored,
+    deferred, div, point, prelude::FluentBuilder as _, px,
 };
 use gpui_component::ActiveTheme as _;
 
@@ -18,6 +19,8 @@ pub(super) struct TableMenu {
     pub handle: Affordance,
     /// Window position of its top-left corner.
     pub position: Point<Pixels>,
+    /// The entry chosen by Enter, moved with Up and Down.
+    pub selected: usize,
 }
 
 /// A column border being dragged.
@@ -57,6 +60,54 @@ pub(super) enum TableAction {
     MoveAfter,
     Delete,
     Align(Align),
+}
+
+/// The entries of the row or column menu: id, label, action.
+fn menu_entries(row: bool) -> Vec<(&'static str, &'static str, TableAction)> {
+    let mut entries = if row {
+        vec![
+            (
+                "insert-above",
+                "Insert row above",
+                TableAction::InsertBefore,
+            ),
+            ("insert-below", "Insert row below", TableAction::InsertAfter),
+            ("move-up", "Move row up", TableAction::MoveBefore),
+            ("move-down", "Move row down", TableAction::MoveAfter),
+        ]
+    } else {
+        vec![
+            (
+                "insert-left",
+                "Insert column left",
+                TableAction::InsertBefore,
+            ),
+            (
+                "insert-right",
+                "Insert column right",
+                TableAction::InsertAfter,
+            ),
+            ("move-left", "Move column left", TableAction::MoveBefore),
+            ("move-right", "Move column right", TableAction::MoveAfter),
+            ("align-left", "Align left", TableAction::Align(Align::Left)),
+            (
+                "align-center",
+                "Align center",
+                TableAction::Align(Align::Center),
+            ),
+            (
+                "align-right",
+                "Align right",
+                TableAction::Align(Align::Right),
+            ),
+        ]
+    };
+    entries.push((
+        "delete",
+        if row { "Delete row" } else { "Delete column" },
+        TableAction::Delete,
+    ));
+    entries
 }
 
 impl MarkdownEditor {
@@ -127,6 +178,7 @@ impl MarkdownEditor {
                 self.table_menu = Some(TableMenu {
                     handle: affordance,
                     position: bounds_bottom_left,
+                    selected: 0,
                 });
             }
             Affordance::ColumnHandle { table, col } => {
@@ -135,6 +187,7 @@ impl MarkdownEditor {
                 self.table_menu = Some(TableMenu {
                     handle: affordance,
                     position: bounds_bottom_left,
+                    selected: 0,
                 });
             }
             Affordance::ColumnBorder { .. } => return false,
@@ -215,6 +268,32 @@ impl MarkdownEditor {
         }
     }
 
+    /// Up, Down and Enter in the open menu. `true` if the key was used.
+    pub(super) fn table_menu_key(
+        &mut self,
+        delta: Option<isize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(menu) = &mut self.table_menu else {
+            return false;
+        };
+        let entries = menu_entries(matches!(menu.handle, Affordance::RowHandle { .. }));
+        match delta {
+            Some(delta) => {
+                let n = entries.len() as isize;
+                menu.selected = (menu.selected as isize + delta).rem_euclid(n) as usize;
+                cx.notify();
+            }
+            None => {
+                if let Some((_, _, action)) = entries.get(menu.selected) {
+                    self.run_table_action(*action, window, cx);
+                }
+            }
+        }
+        true
+    }
+
     /// Closes the open menu, if any.
     pub(super) fn close_table_menu(&mut self, cx: &mut Context<Self>) {
         if self.table_menu.take().is_some() {
@@ -226,49 +305,8 @@ impl MarkdownEditor {
     pub(super) fn render_table_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let menu = self.table_menu?;
         let row = matches!(menu.handle, Affordance::RowHandle { .. });
-        let mut entries: Vec<(&str, &str, TableAction)> = if row {
-            vec![
-                (
-                    "insert-above",
-                    "Insert row above",
-                    TableAction::InsertBefore,
-                ),
-                ("insert-below", "Insert row below", TableAction::InsertAfter),
-                ("move-up", "Move row up", TableAction::MoveBefore),
-                ("move-down", "Move row down", TableAction::MoveAfter),
-            ]
-        } else {
-            vec![
-                (
-                    "insert-left",
-                    "Insert column left",
-                    TableAction::InsertBefore,
-                ),
-                (
-                    "insert-right",
-                    "Insert column right",
-                    TableAction::InsertAfter,
-                ),
-                ("move-left", "Move column left", TableAction::MoveBefore),
-                ("move-right", "Move column right", TableAction::MoveAfter),
-                ("align-left", "Align left", TableAction::Align(Align::Left)),
-                (
-                    "align-center",
-                    "Align center",
-                    TableAction::Align(Align::Center),
-                ),
-                (
-                    "align-right",
-                    "Align right",
-                    TableAction::Align(Align::Right),
-                ),
-            ]
-        };
-        entries.push((
-            "delete",
-            if row { "Delete row" } else { "Delete column" },
-            TableAction::Delete,
-        ));
+        let entries = menu_entries(row);
+        let count = entries.len();
         let theme = cx.theme();
         let (bg, fg, border, hover) = (
             theme.popover,
@@ -277,33 +315,46 @@ impl MarkdownEditor {
             theme.list_hover,
         );
         let danger = theme.danger;
-        let items = entries.into_iter().map(|(id, label, action)| {
-            let color = if action == TableAction::Delete {
-                danger
-            } else {
-                fg
-            };
-            div()
-                .id(SharedString::from(id))
-                .debug_selector(|| format!("table-menu-{id}"))
-                .px(px(12.))
-                .py(px(6.))
-                .rounded(px(8.))
-                .text_size(px(13.5))
-                .text_color(color)
-                .hover(move |s| s.bg(hover))
-                .cursor_pointer()
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.run_table_action(action, window, cx);
-                    }),
-                )
-                .child(label)
-        });
+        let selected_bg = theme.primary.opacity(0.22);
+        let items = entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, (id, label, action))| {
+                let color = if action == TableAction::Delete {
+                    danger
+                } else {
+                    fg
+                };
+                let selected = index == menu.selected;
+                div()
+                    .id(SharedString::from(id))
+                    .debug_selector(|| format!("table-menu-{id}"))
+                    .role(gpui::Role::MenuItem)
+                    .aria_label(label)
+                    .aria_selected(selected)
+                    .aria_position_in_set(index + 1)
+                    .aria_size_of_set(count)
+                    .when(selected, |s| s.bg(selected_bg))
+                    .px(px(12.))
+                    .py(px(6.))
+                    .rounded(px(8.))
+                    .text_size(px(13.5))
+                    .text_color(color)
+                    .hover(move |s| s.bg(hover))
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.run_table_action(action, window, cx);
+                        }),
+                    )
+                    .child(label)
+            });
         let panel = div()
             .id("table-menu")
+            .role(gpui::Role::Menu)
+            .aria_label(if row { "Row" } else { "Column" })
             .occlude()
             .min_w(px(190.))
             .p(px(5.))

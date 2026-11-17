@@ -10,6 +10,7 @@
 //! Points passed in and bounds returned are in window coordinates, like the
 //! positions of mouse events.
 
+mod a11y;
 mod element;
 mod geometry;
 mod images;
@@ -106,6 +107,8 @@ pub(crate) trait ViewSource: EntityInputHandler {
     /// A mouse move while the left button is pressed.
     fn mouse_drag(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>);
     fn mouse_up(&mut self, event: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>);
+    /// An assistive technology clicked the checkbox of task item `id`.
+    fn a11y_toggle(&mut self, id: BlockId, window: &mut Window, cx: &mut Context<Self>);
     /// A mouse move without a pressed button; `None` when the mouse left.
     fn mouse_hover(
         &mut self,
@@ -256,6 +259,12 @@ impl DocumentView {
             }
         }
         changed
+    }
+
+    /// The accessibility nodes of the blocks laid out in the last frame.
+    fn a11y_nodes(&self, input: &ViewInput<'_>, ts: &WindowTextSystem) -> Vec<a11y::A11yBlock> {
+        let caret = input.selection.and_then(Selection::head).map(|h| h.block);
+        a11y::nodes(&mut self.state(), &input.layout, caret, ts)
     }
 
     /// The image sources of the blocks laid out in the last frame.

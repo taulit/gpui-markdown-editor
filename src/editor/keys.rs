@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use gpui::{
     App, ClipboardItem, Context, Div, Global, InteractiveElement as _, KeyBinding,
-    KeyBindingContextPredicate, OperatingSystem, Window, actions,
+    KeyBindingContextPredicate, OperatingSystem, Stateful, Window, actions,
 };
 
 use super::MarkdownEditor;
@@ -267,7 +267,7 @@ pub(super) enum Motion {
 }
 
 /// Adds the action handlers to the editor's root element.
-pub(super) fn bind_actions(root: Div, cx: &mut Context<MarkdownEditor>) -> Div {
+pub(super) fn bind_actions(root: Stateful<Div>, cx: &mut Context<MarkdownEditor>) -> Stateful<Div> {
     macro_rules! ops {
         ($root:expr; $($action:ident => $op:expr),* $(,)?) => {
             $root $(.on_action(cx.listener(
@@ -352,6 +352,19 @@ impl MarkdownEditor {
     pub(super) fn run(&mut self, op: Op, window: &mut Window, cx: &mut Context<Self>) {
         if self.slash.is_some() && self.slash_key(&op, window, cx) {
             return;
+        }
+        if self.table_menu.is_some() {
+            let delta = match op {
+                Op::Move(Motion::Up, false) => Some(Some(-1)),
+                Op::Move(Motion::Down, false) => Some(Some(1)),
+                Op::Enter => Some(None),
+                _ => None,
+            };
+            if let Some(delta) = delta
+                && self.table_menu_key(delta, window, cx)
+            {
+                return;
+            }
         }
         let now = Instant::now();
         let mut keep_goal = false;

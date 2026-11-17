@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     App, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, Styled as _, Subscription, Task, Window, div,
+    ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Subscription,
+    Task, Window, div,
 };
 use gpui_component::scroll::Scrollbar;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -134,6 +135,10 @@ impl MarkdownEditor {
     /// bindings if [`init`] was not called yet.
     pub fn new(window: &mut Window, cx: &mut Context<Self>, mut options: EditorOptions) -> Self {
         init(cx);
+        // The parts are compiled in, but only offered with the `ui` feature.
+        if cfg!(not(feature = "ui")) {
+            options.ui = crate::options::UiParts::NONE;
+        }
         let extensions = Extensions::new(std::mem::take(&mut options.extensions));
         let focus = cx.focus_handle();
         let subscriptions = [
@@ -510,6 +515,9 @@ impl Render for MarkdownEditor {
             }
         }
         let document = div()
+            .id("markdown-editor")
+            .role(gpui::Role::Group)
+            .aria_label("Markdown editor")
             .key_context(keys::CONTEXT)
             .track_focus(&self.focus)
             .size_full()

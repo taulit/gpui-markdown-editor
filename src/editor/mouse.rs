@@ -294,6 +294,11 @@ impl ViewSource for MarkdownEditor {
         }
     }
 
+    fn a11y_toggle(&mut self, id: BlockId, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_task_item(id);
+        self.after_change(false, window, cx);
+    }
+
     fn mouse_hover(
         &mut self,
         position: Option<Point<Pixels>>,
