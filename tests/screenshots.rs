@@ -250,12 +250,11 @@ fn readme_typing_frames() {
             ch => ch.to_string(),
         })
         .collect();
-    let mut frame = 0;
     // The last frame repeats so the loop pauses on the result.
-    for end in (0..=keys.len())
+    let ends = (0..=keys.len())
         .step_by(2)
-        .chain(std::iter::repeat_n(keys.len(), 8))
-    {
+        .chain(std::iter::repeat_n(keys.len(), 8));
+    for (frame, end) in ends.enumerate() {
         // Relative to docs/screenshots, where `capture_with_keys` writes.
         let name = format!("../../target/readme-typing/frame-{frame:03}");
         capture_with_keys(
@@ -267,7 +266,6 @@ fn readme_typing_frames() {
             &keys[..end],
             None,
         );
-        frame += 1;
     }
 }
 
