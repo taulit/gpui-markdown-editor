@@ -83,21 +83,13 @@ impl std::fmt::Debug for ImageInfo {
 /// Image states by source as written in the Markdown.
 pub(crate) type ImageStates = HashMap<SharedString, ImageInfo>;
 
-/// A decoded local image with the size of the original.
-#[derive(Clone)]
-pub(crate) struct Decoded {
-    image: Arc<RenderImage>,
-    width: u32,
-    height: u32,
-}
-
 /// Loads a local image file: reads, decodes and downscales it on the
 /// background executor.
 pub(crate) enum FileImageLoader {}
 
 impl Asset for FileImageLoader {
     type Source = Arc<Path>;
-    type Output = Result<Decoded, Arc<str>>;
+    type Output = Result<ImageInfo, Arc<str>>;
 
     #[allow(clippy::manual_async_fn)] // the future must be `Send + 'static`
     fn load(
@@ -120,7 +112,7 @@ pub(crate) enum UrlImageLoader {}
 
 impl Asset for UrlImageLoader {
     type Source = SharedUri;
-    type Output = Result<Decoded, Arc<str>>;
+    type Output = Result<ImageInfo, Arc<str>>;
 
     #[allow(clippy::manual_async_fn)] // the future must be `Send + 'static`
     fn load(
@@ -160,7 +152,7 @@ impl Asset for UrlImageLoader {
             if width == 0 || height == 0 {
                 return Err("empty image".into());
             }
-            Ok(Decoded {
+            Ok(ImageInfo::Ready {
                 image,
                 width,
                 height,
@@ -173,7 +165,7 @@ impl Asset for UrlImageLoader {
 /// [`MAX_DECODED_WIDTH`] wide.
 /// The decoder refuses images larger than [`MAX_DIMENSION`] on a side or
 /// needing more than [`MAX_DECODE_ALLOC`] bytes.
-pub(crate) fn decode(bytes: &[u8]) -> Result<Decoded, String> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<ImageInfo, String> {
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| e.to_string())?;
@@ -198,7 +190,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Decoded, String> {
         pixel.swap(0, 2);
     }
     let frame = image::Frame::new(rgba);
-    Ok(Decoded {
+    Ok(ImageInfo::Ready {
         image: Arc::new(RenderImage::new(smallvec::smallvec![frame])),
         width,
         height,
@@ -274,20 +266,12 @@ pub(crate) fn request(
         None => ImageInfo::Failed,
         Some(Source::File(path)) => match window.use_asset::<FileImageLoader>(&path, cx) {
             None => ImageInfo::Loading,
-            Some(Ok(d)) => ImageInfo::Ready {
-                image: d.image,
-                width: d.width,
-                height: d.height,
-            },
+            Some(Ok(info)) => info,
             Some(Err(_)) => ImageInfo::Failed,
         },
         Some(Source::Url(uri)) => match window.use_asset::<UrlImageLoader>(&uri, cx) {
             None => ImageInfo::Loading,
-            Some(Ok(d)) => ImageInfo::Ready {
-                image: d.image,
-                width: d.width,
-                height: d.height,
-            },
+            Some(Ok(info)) => info,
             Some(Err(_)) => ImageInfo::Failed,
         },
     }
@@ -334,12 +318,19 @@ mod tests {
         let img = image::RgbaImage::from_pixel(3200, 100, image::Rgba([10, 20, 30, 255]));
         img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
             .unwrap();
-        let d = decode(&png).unwrap();
-        assert_eq!((d.width, d.height), (3200, 100));
-        let size = d.image.size(0);
+        let Ok(ImageInfo::Ready {
+            image,
+            width,
+            height,
+        }) = decode(&png)
+        else {
+            panic!("not decoded");
+        };
+        assert_eq!((width, height), (3200, 100));
+        let size = image.size(0);
         assert_eq!((size.width.0, size.height.0), (1600, 50));
         // BGRA.
-        assert_eq!(&d.image.as_bytes(0).unwrap()[..4], &[30, 20, 10, 255]);
+        assert_eq!(&image.as_bytes(0).unwrap()[..4], &[30, 20, 10, 255]);
     }
 
     #[test]

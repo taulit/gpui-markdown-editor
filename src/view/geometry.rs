@@ -176,30 +176,16 @@ impl<'a> ViewQuery<'a> {
     ) -> Option<Affordance> {
         let d = self.state.doc_point(p);
         let hover = hover.map(|h| self.state.doc_point(h));
-        let ix = self.state.slot_at_y(d.y)?;
-        // The bars and handles reach into the neighbouring slots.
-        for j in [Some(ix), ix.checked_sub(1), Some(ix + 1)]
-            .into_iter()
-            .flatten()
-        {
-            if j >= self.state.slots.len() {
-                continue;
-            }
-            let Some(layout) = self.layout(j) else {
-                continue;
-            };
-            let top = self.state.top_of(j);
+        for (g, top) in self.tables_near(d.y) {
             let local = d - point(Pixels::ZERO, top);
             let hover = hover.map(|h| h - point(Pixels::ZERO, top));
-            for g in table_ui::tables(&layout, self.input.document) {
-                if let Some(shown) = table_ui::shown(&g, hover, caret)
-                    && let Some((a, _)) = shown.iter().find(|(_, r)| r.contains(&local))
-                {
-                    return Some(*a);
-                }
-                if let Some(a) = g.border_at(local) {
-                    return Some(a);
-                }
+            if let Some(shown) = table_ui::shown(&g, hover, caret)
+                && let Some((a, _)) = shown.iter().find(|(_, r)| r.contains(&local))
+            {
+                return Some(*a);
+            }
+            if let Some(a) = g.border_at(local) {
+                return Some(a);
             }
         }
         None
@@ -212,7 +198,21 @@ impl<'a> ViewQuery<'a> {
         p: Point<Pixels>,
     ) -> Option<(BlockId, Option<(usize, usize)>)> {
         let d = self.state.doc_point(p);
-        let ix = self.state.slot_at_y(d.y)?;
+        self.tables_near(d.y).into_iter().find_map(|(g, top)| {
+            let local = d - point(Pixels::ZERO, top);
+            g.hover_area()
+                .contains(&local)
+                .then(|| (g.table, g.cell_at(local)))
+        })
+    }
+
+    /// The tables of the slot at document height `y` and of its neighbours
+    /// (their bars and handles reach into it), with the top of their slot.
+    fn tables_near(&mut self, y: Pixels) -> Vec<(TableGeom, Pixels)> {
+        let Some(ix) = self.state.slot_at_y(y) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
         for j in [Some(ix), ix.checked_sub(1), Some(ix + 1)]
             .into_iter()
             .flatten()
@@ -223,14 +223,14 @@ impl<'a> ViewQuery<'a> {
             let Some(layout) = self.layout(j) else {
                 continue;
             };
-            let local = d - point(Pixels::ZERO, self.state.top_of(j));
-            for g in table_ui::tables(&layout, self.input.document) {
-                if g.hover_area().contains(&local) {
-                    return Some((g.table, g.cell_at(local)));
-                }
-            }
+            let top = self.state.top_of(j);
+            out.extend(
+                table_ui::tables(&layout, self.input.document)
+                    .into_iter()
+                    .map(|g| (g, top)),
+            );
         }
-        None
+        out
     }
 
     /// The geometry of `table` in window coordinates.
@@ -347,12 +347,9 @@ impl<'a> ViewQuery<'a> {
     /// The top-level heading whose block is at the height of `p`, with its
     /// chevron.
     pub fn heading_row_at(&mut self, p: Point<Pixels>) -> Option<(BlockId, Bounds<Pixels>)> {
-        let y = self.state.doc_point(p).y;
-        let ix = self.state.slot_at_y(y)?;
+        let ix = self.block_row_at(p)?;
         let chevron = self.chevron(ix)?;
-        let top = self.state.top_of(ix);
-        let inside = y >= top && y < top + self.state.slots[ix].height;
-        inside.then(|| (self.input.document.blocks()[ix].id, chevron))
+        Some((self.input.document.blocks()[ix].id, chevron))
     }
 
     /// The visible top-level block at the height of `p`.
@@ -442,7 +439,6 @@ impl<'a> ViewQuery<'a> {
     }
 
     /// The bounds of a block, nested block or cell.
-    #[allow(dead_code)] // places the format bar and popovers of the next phase
     pub fn block_bounds(&mut self, id: BlockId) -> Option<Bounds<Pixels>> {
         let ix = self.state.locate(self.input.document, id)?;
         let layout = self.layout(ix)?;

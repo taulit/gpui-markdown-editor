@@ -10,7 +10,7 @@ use std::cell::RefCell;
 
 use html5ever::tendril::StrTendril;
 
-use super::write_inline::line_start_escape;
+use super::write_inline::{line_start_escape, write_code, write_destination};
 use html5ever::tokenizer::{
     BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
 };
@@ -579,7 +579,7 @@ fn render_inline(node: &Node, ctx: &Ctx, out: &mut String) {
                     let src = e.attr("src").unwrap_or("");
                     if !src.is_empty() {
                         let alt = escape(e.attr("alt").unwrap_or(""));
-                        out.push_str(&format!("![{alt}]({})", destination(src)));
+                        out.push_str(&format!("![{alt}]({})", write_destination(src)));
                     }
                 }
                 "input" => {}
@@ -591,7 +591,7 @@ fn render_inline(node: &Node, ctx: &Ctx, out: &mut String) {
                         .filter(|h| !h.is_empty() && !h.starts_with("javascript:"))
                     {
                         Some(href) if !text.is_empty() => {
-                            out.push_str(&format!("[{text}]({})", destination(href)));
+                            out.push_str(&format!("[{text}]({})", write_destination(href)));
                         }
                         _ => out.push_str(&text),
                     }
@@ -599,15 +599,8 @@ fn render_inline(node: &Node, ctx: &Ctx, out: &mut String) {
                 "code" | "kbd" | "samp" | "tt" => {
                     let mut text = String::new();
                     text_content(&e.children, &mut text);
-                    let text = text.replace('\n', " ");
                     if !text.trim().is_empty() {
-                        let ticks = "`".repeat(longest_run(&text, '`') + 1);
-                        let pad = if text.starts_with('`') || text.ends_with('`') {
-                            " "
-                        } else {
-                            ""
-                        };
-                        out.push_str(&format!("{ticks}{pad}{text}{pad}{ticks}"));
+                        out.push_str(&write_code(&text, false));
                     }
                 }
                 _ => {
@@ -713,15 +706,6 @@ fn escape(text: &str) -> String {
         escape_char(ch, &mut out);
     }
     out
-}
-
-/// A link destination, in angle brackets if it has spaces or parentheses.
-fn destination(url: &str) -> String {
-    if url.contains([' ', '(', ')', '<', '>']) {
-        format!("<{}>", url.replace('<', "%3C").replace('>', "%3E"))
-    } else {
-        url.to_string()
-    }
 }
 
 #[cfg(test)]

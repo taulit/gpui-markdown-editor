@@ -10,13 +10,6 @@ fn shown(cx: &mut VisualTestContext, selector: &'static str) -> bool {
     cx.debug_bounds(selector).is_some()
 }
 
-fn click(cx: &mut VisualTestContext, selector: &'static str) {
-    let bounds = cx
-        .debug_bounds(selector)
-        .unwrap_or_else(|| panic!("{selector}"));
-    cx.simulate_click(bounds.center(), Modifiers::none());
-}
-
 fn first_kind(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> BlockKind {
     editor.read_with(cx, |e, _| e.document().blocks()[0].kind().clone())
 }

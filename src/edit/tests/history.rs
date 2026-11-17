@@ -12,7 +12,7 @@ fn typing_is_grouped_by_time_and_words() {
     assert_eq!(state.doc.blocks[0].content.text, "xhello ");
     state.undo();
     assert_eq!(state.doc.blocks[0].content.text, "x");
-    assert!(!state.can_undo());
+    assert!(!state.history.can_undo());
     state.redo();
     state.redo();
     assert_eq!(state.doc.blocks[0].content.text, "xhello world");
@@ -78,7 +78,7 @@ fn undoing_everything_restores_the_source_byte_for_byte() {
 fn a_new_document_clears_the_history() {
     let mut state = typed("a‸\n", "bc");
     state.set_document(Document::parse("x\n"));
-    assert!(!state.can_undo());
+    assert!(!state.history.can_undo());
     assert!(state.take_changes().structure);
 }
 

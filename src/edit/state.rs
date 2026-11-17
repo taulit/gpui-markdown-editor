@@ -154,16 +154,6 @@ impl EditorState {
         std::mem::take(&mut self.changes)
     }
 
-    #[allow(dead_code)] // for the format bar of the next phase
-    pub(crate) fn can_undo(&self) -> bool {
-        self.history.can_undo()
-    }
-
-    #[allow(dead_code)] // for the format bar of the next phase
-    pub(crate) fn can_redo(&self) -> bool {
-        self.history.can_redo()
-    }
-
     // ----- Positions -----
 
     pub(crate) fn locate(&self, id: BlockId) -> Option<Loc> {

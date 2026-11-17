@@ -421,8 +421,6 @@ pub(crate) fn build_runs(
                         MarkColor::Highlight => style.highlight_color,
                         MarkColor::Muted => style.muted_color,
                         MarkColor::Fixed(c) => c,
-                        #[allow(unreachable_patterns)]
-                        _ => style.text_color,
                     };
                     let fg = look.color.map(color);
                     if let Some(fg) = fg

@@ -78,6 +78,7 @@ fn input<'a>(
     ViewInput {
         layout: layout_input(doc, style),
         selection,
+        selected_cells: Vec::new(),
         highlights: &[],
         search: &[],
         search_current: None,

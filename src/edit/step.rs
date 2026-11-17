@@ -13,7 +13,6 @@ use crate::model::{Align, Block, BlockId, BlockKind, Cell, Document, ImageData, 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Attr {
     /// Source, alt text, title and width of an image.
-    #[allow(dead_code)] // set by the image commands of the next phase
     Image(ImageData),
     /// The info string of a code block.
     #[allow(dead_code)] // set by the code block language picker of the next phase

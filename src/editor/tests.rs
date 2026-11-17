@@ -174,6 +174,19 @@ pub(super) fn press(cx: &mut VisualTestContext, keys: &str) {
     cx.simulate_keystrokes(&keys.join(" "));
 }
 
+/// Clicks the middle of the element with debug selector `selector`.
+pub(super) fn click(cx: &mut VisualTestContext, selector: &'static str) {
+    let bounds = cx
+        .debug_bounds(selector)
+        .unwrap_or_else(|| panic!("{selector}"));
+    cx.simulate_click(bounds.center(), gpui::Modifiers::none());
+}
+
+/// Whether the editor (not a popup field) has the focus.
+pub(super) fn editor_focused(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> bool {
+    cx.update(|window, cx| editor.focus_handle(cx).is_focused(window))
+}
+
 /// Types `text`; `\n` presses Enter.
 pub(super) fn type_text(cx: &mut VisualTestContext, text: &str) {
     for (i, line) in text.split('\n').enumerate() {

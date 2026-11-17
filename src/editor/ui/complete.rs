@@ -9,12 +9,11 @@
 
 use gpui::{
     Context, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    prelude::FluentBuilder as _, px, size,
+    SharedString, Styled as _, Window, div, px, size,
 };
 
 use super::super::MarkdownEditor;
-use super::{Palette, overlay, panel, place};
+use super::{Palette, menu_panel, menu_row, overlay, place, wrap};
 use crate::edit::Selection;
 use crate::edit::history::EditKind;
 use crate::extensions::{Tag, WikiLink};
@@ -130,10 +129,7 @@ impl MarkdownEditor {
 
     pub(in crate::editor) fn completion_move(&mut self, delta: isize) {
         if let Some(menu) = &mut self.completion {
-            let n = menu.items.len() as isize;
-            if n > 0 {
-                menu.selected = (menu.selected as isize + delta).rem_euclid(n) as usize;
-            }
+            menu.selected = wrap(menu.selected, delta, menu.items.len());
         }
     }
 
@@ -212,62 +208,53 @@ impl MarkdownEditor {
         let position = place(anchor, size(WIDTH, height), self.view.bounds(), false);
         let count = menu.items.len();
         let rows = shown.map(|(index, item)| {
-            let selected = index == menu.selected;
-            let hover = palette.hover;
-            div()
-                .id(SharedString::from(format!("completion-{index}")))
-                .debug_selector(move || format!("completion-{index}"))
-                .role(gpui::Role::ListBoxOption)
-                .aria_label(item.label.clone())
-                .aria_selected(selected)
-                .aria_position_in_set(index + 1)
-                .aria_size_of_set(count)
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .h(ROW_HEIGHT)
-                .px(px(12.))
-                .rounded(px(9.))
-                .cursor_pointer()
-                .when(selected, |s| s.bg(palette.selected()))
-                .when(!selected, |s| s.hover(move |s| s.bg(hover)))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.completion_choose(index, window, cx);
-                    }),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_size(px(13.5))
-                        .child(item.label.clone()),
-                )
-                .children(item.detail.clone().map(|d| {
-                    div()
-                        .flex_none()
-                        .text_size(px(11.5))
-                        .text_color(palette.muted)
-                        .child(d)
-                }))
+            menu_row(
+                SharedString::from(format!("completion-{index}")),
+                &palette,
+                gpui::Role::ListBoxOption,
+                item.label.clone(),
+                (index, count),
+                index == menu.selected,
+            )
+            .items_center()
+            .gap(px(8.))
+            .h(ROW_HEIGHT)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.completion_choose(index, window, cx);
+                }),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .text_size(px(13.5))
+                    .child(item.label.clone()),
+            )
+            .children(item.detail.clone().map(|d| {
+                div()
+                    .flex_none()
+                    .text_size(px(11.5))
+                    .text_color(palette.muted)
+                    .child(d)
+            }))
         });
-        let list = panel(&palette)
-            .id("completion-menu")
-            .role(gpui::Role::ListBox)
-            .aria_label(match menu.kind {
-                CompletionKind::WikiLink => "Notes",
-                _ => "Tags",
-            })
-            .occlude()
-            .flex_col()
-            .w(WIDTH)
-            .p(px(6.))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .children(rows);
+        let label = match menu.kind {
+            CompletionKind::WikiLink => "Notes",
+            _ => "Tags",
+        };
+        let list = menu_panel(
+            &palette,
+            "completion-menu",
+            gpui::Role::ListBox,
+            label,
+            WIDTH,
+        )
+        .children(rows);
         Some(overlay(position, list))
     }
 }

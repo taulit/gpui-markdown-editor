@@ -359,14 +359,11 @@ impl MarkdownEditor {
     /// that changed it.
     pub(crate) fn sync_meta(&mut self, cx: &mut Context<Self>) {
         self.derive_widths();
-        let mut ordinal = 0;
-        let mut widths = std::collections::BTreeMap::new();
-        visit_tables(self.state.doc.blocks(), &mut |id, _| {
-            if let Some(w) = self.column_widths.get(&id) {
-                widths.insert(ordinal, w.clone());
-            }
-            ordinal += 1;
-        });
+        let widths: std::collections::BTreeMap<usize, Vec<f32>> = tables(&self.state.doc)
+            .into_iter()
+            .enumerate()
+            .filter_map(|(ordinal, id)| Some((ordinal, self.column_widths.get(&id)?.clone())))
+            .collect();
         self.column_widths
             .retain(|id, _| self.state.doc.block(*id).is_some());
         if widths != self.meta.column_widths {
@@ -599,30 +596,34 @@ fn visit_texts(blocks: &[Block], f: &mut impl FnMut(BlockId, &str)) {
     }
 }
 
-/// Calls `f` with every table in document order, with its column count.
-fn visit_tables(blocks: &[Block], f: &mut impl FnMut(BlockId, usize)) {
-    for block in blocks {
-        if let BlockKind::Table(table) = block.kind() {
-            f(
-                block.id(),
-                table.rows.iter().map(Vec::len).max().unwrap_or(0),
-            );
+/// The ids of the blocks matching `pred`, nested ones included, in
+/// document order.
+fn ids_where(blocks: &[Block], pred: &impl Fn(&Block) -> bool) -> Vec<BlockId> {
+    let mut out = Vec::new();
+    fn walk(blocks: &[Block], pred: &impl Fn(&Block) -> bool, out: &mut Vec<BlockId>) {
+        for block in blocks {
+            if pred(block) {
+                out.push(block.id());
+            }
+            walk(block.children(), pred, out);
         }
-        visit_tables(block.children(), f);
     }
+    walk(blocks, pred, &mut out);
+    out
+}
+
+/// The tables of `doc` in document order (the ordinals of [`DocMeta`]).
+fn tables(doc: &Document) -> Vec<BlockId> {
+    ids_where(doc.blocks(), &|b| matches!(b.kind(), BlockKind::Table(_)))
 }
 
 /// The column widths of `meta` keyed by the ids of the tables of `doc`.
 fn widths_by_id(doc: &Document, meta: &DocMeta) -> ColumnWidths {
-    let mut out = ColumnWidths::default();
-    let mut ordinal = 0;
-    visit_tables(doc.blocks(), &mut |id, _| {
-        if let Some(w) = meta.column_widths.get(&ordinal) {
-            out.insert(id, w.clone());
-        }
-        ordinal += 1;
-    });
-    out
+    tables(doc)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(ordinal, id)| Some((id, meta.column_widths.get(&ordinal)?.clone())))
+        .collect()
 }
 
 /// Finds the non-overlapping occurrences of `needle` in `text`, ignoring case.

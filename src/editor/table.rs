@@ -167,12 +167,7 @@ impl MarkdownEditor {
     /// Puts the caret into cell (`row`, `col`) of `table`, keeping the
     /// caret where it is if it is in that cell already.
     fn caret_into_cell(&mut self, table: BlockId, row: usize, col: usize) -> bool {
-        let id = match self.state.doc.block(table).map(|b| b.kind()) {
-            Some(crate::model::BlockKind::Table(t)) => t.rows.get(row).and_then(|r| r.get(col)),
-            _ => None,
-        }
-        .map(|c| c.id());
-        let Some(id) = id else {
+        let Some(id) = self.state.cell_id(table, row, col) else {
             return false;
         };
         if self.state.selection.head().is_some_and(|h| h.block == id)
@@ -218,17 +213,15 @@ impl MarkdownEditor {
                     self.state.table_insert_column(true);
                 }
             }
-            Affordance::RowHandle { table, row } => {
-                let col = self.caret_cell_in(table).map_or(0, |c| c.1);
-                self.caret_into_cell(table, row, col);
-                self.table_menu = Some(TableMenu {
-                    handle: affordance,
-                    position: bounds_bottom_left,
-                    selected: 0,
-                });
-            }
-            Affordance::ColumnHandle { table, col } => {
-                let row = self.caret_cell_in(table).map_or(0, |c| c.0);
+            Affordance::RowHandle { table, .. } | Affordance::ColumnHandle { table, .. } => {
+                // The caret goes to the handle's row or column, keeping the
+                // other coordinate.
+                let (row, col) = self.caret_cell_in(table).unwrap_or((0, 0));
+                let (row, col) = match affordance {
+                    Affordance::RowHandle { row, .. } => (row, col),
+                    Affordance::ColumnHandle { col, .. } => (row, col),
+                    _ => (row, col),
+                };
                 self.caret_into_cell(table, row, col);
                 self.table_menu = Some(TableMenu {
                     handle: affordance,
@@ -409,8 +402,7 @@ impl MarkdownEditor {
         let entries = menu_entries(matches!(menu.handle, Affordance::RowHandle { .. }));
         match delta {
             Some(delta) => {
-                let n = entries.len() as isize;
-                menu.selected = (menu.selected as isize + delta).rem_euclid(n) as usize;
+                menu.selected = super::ui::wrap(menu.selected, delta, entries.len());
                 cx.notify();
             }
             None => {

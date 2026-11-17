@@ -51,7 +51,8 @@ impl EditorState {
         }
     }
 
-    fn cell_id(&self, table: BlockId, row: usize, col: usize) -> Option<BlockId> {
+    /// The id of cell (`row`, `col`) of `table`.
+    pub(crate) fn cell_id(&self, table: BlockId, row: usize, col: usize) -> Option<BlockId> {
         Some(self.table_data(table)?.rows.get(row)?.get(col)?.id)
     }
 

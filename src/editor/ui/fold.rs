@@ -30,6 +30,13 @@ fn level(block: &Block) -> Option<u8> {
     }
 }
 
+/// `true` if `id` is a top-level heading, the only blocks that fold.
+fn is_top_heading(doc: &Document, id: BlockId) -> bool {
+    doc.blocks()
+        .iter()
+        .any(|b| b.id() == id && level(b).is_some())
+}
+
 /// The blocks hidden by the folded headings of `folded`.
 pub(in crate::editor) fn hidden_blocks(
     doc: &Document,
@@ -60,42 +67,31 @@ pub(in crate::editor) fn hidden_blocks(
     hidden
 }
 
-/// Calls `f` with the id of every heading of the document in document
-/// order, nested ones included (the ordinals of [`DocMeta`]).
-fn visit_headings(blocks: &[Block], f: &mut impl FnMut(BlockId)) {
-    for block in blocks {
-        if level(block).is_some() {
-            f(block.id());
-        }
-        visit_headings(block.children(), f);
-    }
+/// Every heading of the document in document order, nested ones included
+/// (the ordinals of [`DocMeta`]).
+fn headings(doc: &Document) -> Vec<BlockId> {
+    super::super::ids_where(doc.blocks(), &|b| level(b).is_some())
 }
 
 /// The folded heading ids for the ordinals in `meta`. Only top-level
 /// headings fold.
 pub(in crate::editor) fn folds_by_id(doc: &Document, meta: &DocMeta) -> HashSet<BlockId> {
     let top: HashSet<BlockId> = doc.blocks().iter().map(Block::id).collect();
-    let mut out = HashSet::new();
-    let mut ordinal = 0;
-    visit_headings(doc.blocks(), &mut |id| {
-        if meta.folded_headings.contains(&ordinal) && top.contains(&id) {
-            out.insert(id);
-        }
-        ordinal += 1;
-    });
-    out
+    headings(doc)
+        .into_iter()
+        .enumerate()
+        .filter(|(ordinal, id)| meta.folded_headings.contains(ordinal) && top.contains(id))
+        .map(|(_, id)| id)
+        .collect()
 }
 
 fn ordinals(doc: &Document, folded: &HashSet<BlockId>) -> BTreeSet<usize> {
-    let mut out = BTreeSet::new();
-    let mut ordinal = 0;
-    visit_headings(doc.blocks(), &mut |id| {
-        if folded.contains(&id) {
-            out.insert(ordinal);
-        }
-        ordinal += 1;
-    });
-    out
+    headings(doc)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, id)| folded.contains(id))
+        .map(|(ordinal, _)| ordinal)
+        .collect()
 }
 
 impl MarkdownEditor {
@@ -125,8 +121,7 @@ impl MarkdownEditor {
         let heading = self
             .state
             .current_block()
-            .filter(|id| self.state.doc.blocks().iter().any(|b| b.id() == *id))
-            .filter(|id| self.state.doc.block(*id).and_then(level).is_some());
+            .filter(|id| is_top_heading(&self.state.doc, *id));
         if let Some(heading) = heading {
             self.toggle_fold(heading, window, cx);
         }
@@ -134,12 +129,7 @@ impl MarkdownEditor {
 
     /// Changes the fold state of `heading`. `true` if it changed.
     fn set_folded(&mut self, heading: BlockId, fold: bool, cx: &mut Context<Self>) -> bool {
-        let is_heading = self
-            .state
-            .doc
-            .blocks()
-            .iter()
-            .any(|b| b.id() == heading && level(b).is_some());
+        let is_heading = is_top_heading(&self.state.doc, heading);
         let changed = if fold && is_heading {
             self.folded.insert(heading)
         } else {
@@ -223,11 +213,7 @@ impl MarkdownEditor {
             return;
         }
         let doc = &self.state.doc;
-        self.folded.retain(|id| {
-            doc.blocks()
-                .iter()
-                .any(|b| b.id() == *id && level(b).is_some())
-        });
+        self.folded.retain(|id| is_top_heading(doc, *id));
         let hidden = hidden_blocks(doc, &self.folded);
         let mut open = Vec::new();
         for (ix, b) in doc.blocks().iter().enumerate() {

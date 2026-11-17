@@ -16,8 +16,8 @@ pub(super) mod slash;
 
 use gpui::{
     App, Bounds, BoxShadow, Div, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Point, SharedString, Size, Stateful, Styled as _, div, hsla, point,
-    prelude::FluentBuilder as _, px,
+    Pixels, Point, SharedString, Size, Stateful, StatefulInteractiveElement as _, Styled as _, div,
+    hsla, point, prelude::FluentBuilder as _, px,
 };
 use gpui_component::ActiveTheme as _;
 
@@ -76,6 +76,63 @@ fn shadow() -> BoxShadow {
         spread_radius: px(-6.),
         inset: false,
     }
+}
+
+/// The panel of a menu list (slash menu, completions): `width` wide,
+/// padding 6, swallowing clicks so that they do not reach the document.
+pub(super) fn menu_panel(
+    palette: &Palette,
+    id: &'static str,
+    role: gpui::Role,
+    label: &'static str,
+    width: Pixels,
+) -> Stateful<Div> {
+    panel(palette)
+        .id(id)
+        .role(role)
+        .aria_label(label)
+        .occlude()
+        .flex_col()
+        .w(width)
+        .p(px(6.))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+}
+
+/// A row of a menu list: item `index` of `count`, highlighted when
+/// `selected`, with `id` as element id and debug selector.
+pub(super) fn menu_row(
+    id: SharedString,
+    palette: &Palette,
+    role: gpui::Role,
+    label: SharedString,
+    (index, count): (usize, usize),
+    selected: bool,
+) -> Stateful<Div> {
+    let hover = palette.hover;
+    let selector = id.clone();
+    div()
+        .id(id)
+        .debug_selector(move || selector.to_string())
+        .role(role)
+        .aria_label(label)
+        .aria_selected(selected)
+        .aria_position_in_set(index + 1)
+        .aria_size_of_set(count)
+        .flex()
+        .px(px(12.))
+        .rounded(px(9.))
+        .cursor_pointer()
+        .when(selected, |s| s.bg(palette.selected()))
+        .when(!selected, |s| s.hover(move |s| s.bg(hover)))
+}
+
+/// Moves a list selection by `delta`, wrapping around; `selected` as it is
+/// for an empty list.
+pub(super) fn wrap(selected: usize, delta: isize, len: usize) -> usize {
+    if len == 0 {
+        return selected;
+    }
+    (selected as isize + delta).rem_euclid(len as isize) as usize
 }
 
 /// A square toolbar button (38 x 36 in the format bar), highlighted when
@@ -142,6 +199,14 @@ pub(super) fn overlay(position: Point<Pixels>, child: impl IntoElement) -> Div {
 mod tests {
     use super::*;
     use gpui::size;
+
+    #[test]
+    fn wrap_moves_around_the_ends() {
+        assert_eq!(wrap(0, -1, 3), 2);
+        assert_eq!(wrap(2, 1, 3), 0);
+        assert_eq!(wrap(1, 1, 3), 2);
+        assert_eq!(wrap(4, 1, 0), 4);
+    }
 
     #[test]
     fn shadow_matches_the_design() {

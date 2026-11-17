@@ -8,12 +8,11 @@
 
 use gpui::{
     Context, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    prelude::FluentBuilder as _, px, size,
+    SharedString, Styled as _, Window, div, prelude::FluentBuilder as _, px, size,
 };
 
 use super::super::MarkdownEditor;
-use super::{Palette, overlay, panel, place};
+use super::{Palette, menu_panel, menu_row, overlay, place, wrap};
 use crate::command::Command;
 use crate::edit::Selection;
 use crate::edit::order;
@@ -288,11 +287,10 @@ impl MarkdownEditor {
         let Some(menu) = &mut self.slash else {
             return;
         };
-        let n = menu.entries.len() as isize;
-        if n == 0 {
+        if menu.entries.is_empty() {
             return;
         }
-        menu.selected = (menu.selected as isize + delta).rem_euclid(n) as usize;
+        menu.selected = wrap(menu.selected, delta, menu.entries.len());
         if menu.selected < menu.scroll {
             menu.scroll = menu.selected;
         } else if menu.selected >= menu.scroll + VISIBLE {
@@ -398,65 +396,56 @@ impl MarkdownEditor {
             .fold(px(12.), |a, b| a + b)
             .max(px(46.));
         let position = place(anchor, size(WIDTH, height), self.view.bounds(), false);
+        let count = menu.entries.len();
         let rows = shown.into_iter().map(|(index, entry)| {
-            let selected = index == menu.selected;
-            let hover = palette.hover;
-            div()
-                .id(SharedString::from(format!("slash-{}", entry.id)))
-                .debug_selector(|| format!("slash-{}", entry.id))
-                .role(gpui::Role::MenuItem)
-                .aria_label(entry.label.clone())
-                .aria_selected(selected)
-                .aria_position_in_set(index + 1)
-                .aria_size_of_set(menu.entries.len())
-                .flex()
-                .flex_col()
-                .justify_center()
-                .h(if entry.description.is_some() {
-                    ROW_HEIGHT_DESCRIBED
-                } else {
-                    ROW_HEIGHT
-                })
-                .px(px(12.))
-                .rounded(px(9.))
-                .cursor_pointer()
-                .when(selected, |s| s.bg(palette.selected()))
-                .when(!selected, |s| s.hover(move |s| s.bg(hover)))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.slash_choose(index, window, cx);
-                    }),
-                )
-                .child(div().text_size(px(13.5)).child(entry.label.clone()))
-                .children(
-                    entry
-                        .description
-                        .clone()
-                        .map(|d| div().text_size(px(11.5)).text_color(palette.muted).child(d)),
-                )
-        });
-        let list = panel(&palette)
-            .id("slash-menu")
-            .role(gpui::Role::Menu)
-            .aria_label("Insert block")
-            .occlude()
+            menu_row(
+                SharedString::from(format!("slash-{}", entry.id)),
+                &palette,
+                gpui::Role::MenuItem,
+                entry.label.clone(),
+                (index, count),
+                index == menu.selected,
+            )
             .flex_col()
-            .w(WIDTH)
-            .p(px(6.))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .children(rows)
-            .when(menu.entries.is_empty(), |s| {
-                s.child(
-                    div()
-                        .px(px(12.))
-                        .py(px(8.))
-                        .text_size(px(13.))
-                        .text_color(palette.muted)
-                        .child("No matching blocks"),
-                )
-            });
+            .justify_center()
+            .h(if entry.description.is_some() {
+                ROW_HEIGHT_DESCRIBED
+            } else {
+                ROW_HEIGHT
+            })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.slash_choose(index, window, cx);
+                }),
+            )
+            .child(div().text_size(px(13.5)).child(entry.label.clone()))
+            .children(
+                entry
+                    .description
+                    .clone()
+                    .map(|d| div().text_size(px(11.5)).text_color(palette.muted).child(d)),
+            )
+        });
+        let list = menu_panel(
+            &palette,
+            "slash-menu",
+            gpui::Role::Menu,
+            "Insert block",
+            WIDTH,
+        )
+        .children(rows)
+        .when(menu.entries.is_empty(), |s| {
+            s.child(
+                div()
+                    .px(px(12.))
+                    .py(px(8.))
+                    .text_size(px(13.))
+                    .text_color(palette.muted)
+                    .child("No matching blocks"),
+            )
+        });
         Some(overlay(position, list))
     }
 }

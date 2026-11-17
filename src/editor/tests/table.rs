@@ -445,13 +445,6 @@ fn meta_widths(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> V
     })
 }
 
-fn click_tool(cx: &mut VisualTestContext, selector: &'static str) {
-    let bounds = cx
-        .debug_bounds(selector)
-        .unwrap_or_else(|| panic!("{selector}"));
-    cx.simulate_click(bounds.center(), Modifiers::none());
-}
-
 #[gpui::test]
 fn column_widths_follow_structure_edits_and_their_undo(cx: &mut TestAppContext) {
     let (editor, cx) = open(cx, GRID);
@@ -462,7 +455,7 @@ fn column_widths_follow_structure_edits_and_their_undo(cx: &mut TestAppContext) 
     select(&editor, cx, pos(a, 0), pos(a, 0));
 
     // The format bar's delete column, then undo and redo.
-    click_tool(cx, "ui-format-delete-column");
+    click(cx, "ui-format-delete-column");
     assert_eq!(meta_widths(&editor, cx), [150., 200.]);
     assert_eq!(column_widths(&editor, cx, 0), [150., 200.]);
     press(cx, "secondary-z");
@@ -476,7 +469,7 @@ fn column_widths_follow_structure_edits_and_their_undo(cx: &mut TestAppContext) 
     // The format bar's add column inserts after the caret's column.
     let b = cell(&editor, cx, 0, 1, 1);
     select(&editor, cx, pos(b, 0), pos(b, 0));
-    click_tool(cx, "ui-format-add-column");
+    click(cx, "ui-format-add-column");
     assert_eq!(meta_widths(&editor, cx), [100., 150., 120., 200.]);
     press(cx, "secondary-z");
     assert_eq!(meta_widths(&editor, cx), [100., 150., 200.]);

@@ -1,6 +1,6 @@
 //! The link popover and the link bubble.
 
-use gpui::{ClipboardItem, Entity, Focusable as _, Modifiers, TestAppContext, VisualTestContext};
+use gpui::{ClipboardItem, Entity, TestAppContext, VisualTestContext};
 
 use super::*;
 use crate::model::BlockKind;
@@ -8,17 +8,6 @@ use crate::options::UiParts;
 
 fn prompt_open(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> bool {
     editor.read_with(cx, |editor, _| editor.prompt.is_some())
-}
-
-fn editor_focused(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> bool {
-    cx.update(|window, cx| editor.focus_handle(cx).is_focused(window))
-}
-
-fn click(cx: &mut VisualTestContext, selector: &'static str) {
-    let bounds = cx
-        .debug_bounds(selector)
-        .unwrap_or_else(|| panic!("{selector}"));
-    cx.simulate_click(bounds.center(), Modifiers::none());
 }
 
 /// Selects `range` of the first block.

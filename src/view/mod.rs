@@ -78,6 +78,8 @@ pub(crate) type ColumnWidths = std::collections::HashMap<BlockId, Vec<f32>>;
 pub(crate) struct ViewInput<'a> {
     pub layout: LayoutInput<'a>,
     pub selection: Option<&'a Selection>,
+    /// The cells of a [`Selection::Cells`] rectangle.
+    pub selected_cells: Vec<BlockId>,
     /// Extra backgrounds set by the host.
     pub highlights: &'a [TextRange],
     /// The matches of the find bar, and the current one, painted stronger.

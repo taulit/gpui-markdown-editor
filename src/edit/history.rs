@@ -74,12 +74,9 @@ impl History {
         self.sealed = true;
     }
 
+    #[cfg(test)]
     pub(crate) fn can_undo(&self) -> bool {
         !self.undo.is_empty()
-    }
-
-    pub(crate) fn can_redo(&self) -> bool {
-        !self.redo.is_empty()
     }
 
     /// Records an applied transaction. `text` is the typed text for

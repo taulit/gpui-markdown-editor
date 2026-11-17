@@ -51,6 +51,14 @@ impl ViewSource for MarkdownEditor {
         ViewInput {
             layout: self.layout_input(),
             selection: Some(&self.state.selection),
+            selected_cells: match self.state.selection {
+                Selection::Cells { anchor, head } => self
+                    .state
+                    .cell_rect(anchor, head)
+                    .map(|r| r.cells.into_iter().flatten().collect())
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            },
             highlights: &self.highlights,
             search: self.find.as_ref().map_or(&[], |f| &f.matches),
             search_current: self.find.as_ref().and_then(|f| f.current_range()),

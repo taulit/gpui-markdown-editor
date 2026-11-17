@@ -1,6 +1,6 @@
 //! The find bar.
 
-use gpui::{Entity, Focusable as _, Modifiers, TestAppContext, VisualTestContext};
+use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
 
 use super::*;
 use crate::command::Command;
@@ -16,10 +16,6 @@ fn state(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> Option<
             .as_ref()
             .map(|f| (f.matches.len(), f.current.map_or(usize::MAX, |c| c + 1)))
     })
-}
-
-fn editor_focused(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> bool {
-    cx.update(|window, cx| editor.focus_handle(cx).is_focused(window))
 }
 
 #[gpui::test]
