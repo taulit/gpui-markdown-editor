@@ -131,9 +131,10 @@ fn text_commands_edit_the_content(cx: &mut TestAppContext) {
             editor.command(Command::FoldHeading, window, cx);
             assert_eq!(editor.markdown(), "# New");
 
-            // A rule is followed by an empty paragraph for the caret.
+            // A rule is followed by an empty paragraph for the caret, which
+            // does not change the Markdown while it is empty.
             editor.command(Command::InsertRule, window, cx);
-            assert_eq!(editor.markdown(), "# New\n\n---\n\n");
+            assert_eq!(editor.markdown(), "# New\n\n---");
         });
     });
     cx.run_until_parked();
