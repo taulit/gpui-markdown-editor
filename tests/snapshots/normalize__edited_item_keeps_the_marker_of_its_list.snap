@@ -1,0 +1,21 @@
+---
+source: tests/normalize.rs
+expression: "edited(source, &[1, 4])"
+---
++ one
++ __two__
++ three
+
+3) a
+4) __b__
+5) c
+⏎
+======== edited [1, 4]
++ one
++ **two**
++ three
+
+3) a
+4) **b**
+5) c
+⏎

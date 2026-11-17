@@ -1,0 +1,5 @@
+---
+source: tests/normalize.rs
+expression: "normalized(\"[[Note]] #tag ==highlight==\\n\")"
+---
+[[Note]] #tag ==highlight==

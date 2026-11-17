@@ -1,0 +1,33 @@
+---
+source: tests/normalize.rs
+expression: "edited(source, &[0, 2, 4])"
+---
+Setext heading
+==============
+* item *one*
+* item __two__
+* item three
+
+Paragraph with   odd    spacing
+and a soft break.
+
+
+
+| a|b |
+|-|-|
+|1|2|
+⏎
+======== edited [0, 2, 4]
+# Setext heading
+* item *one*
+* item **two**
+* item three
+
+Paragraph with   odd    spacing and a soft break.
+
+
+
+| a|b |
+|-|-|
+|1|2|
+⏎

@@ -1,0 +1,2 @@
+# Keep the bytes of the corpus exactly as they are (CRLF, BOM, no final newline).
+* -text

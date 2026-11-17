@@ -1,0 +1,6 @@
+---
+source: tests/normalize.rs
+expression: "normalized(indoc!\n{\"\n        A paragraph that was\n        wrapped by hand\n          with indentation\n        and a hard break  \n        at the end.\n    \"})"
+---
+A paragraph that was wrapped by hand with indentation and a hard break\
+at the end.
