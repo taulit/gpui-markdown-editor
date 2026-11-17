@@ -98,9 +98,15 @@ impl<T: ViewSource> Element for DocumentElement<T> {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let ts = window.text_system().clone();
-        let source = self.source.read(cx);
-        let input = source.view_input();
-        let frame = self.view.prepare_frame(&input, bounds, &ts);
+        let input = self.source.read(cx).view_input();
+        let mut frame = self.view.prepare_frame(&input, bounds, &ts);
+        let srcs = self.view.visible_images(&input);
+        let resolver = input.resolve_src.cloned();
+        if !srcs.is_empty() && self.view.load_images(&srcs, resolver.as_ref(), window, cx) {
+            let input = self.source.read(cx).view_input();
+            frame = self.view.prepare_frame(&input, bounds, &ts);
+        }
+        let input = self.source.read(cx).view_input();
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
         let cursor = cursor_at(&self.view, &input, window.mouse_position(), window, cx);
         Prepaint {

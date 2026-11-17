@@ -14,6 +14,7 @@ use gpui::{
 use crate::model::{Align, Block, BlockId, BlockKind, Inline, Mark, MarkSpan};
 use crate::style::EditorStyle;
 
+use super::images::{ImageInfo, ImageStates};
 use super::text::{TextLayout, TextSpec, build_runs, hash_inline};
 
 /// Where a top-level block stands in the document, as far as it changes its
@@ -126,6 +127,11 @@ pub(crate) enum Decoration {
         bounds: Bounds<Pixels>,
         checked: bool,
     },
+    /// A loaded image, painted with the image radius.
+    Image {
+        bounds: Bounds<Pixels>,
+        src: SharedString,
+    },
 }
 
 /// The laid out top-level block.
@@ -186,9 +192,19 @@ impl TextCache {
 }
 
 /// Everything block layout needs besides the block.
+/// Layout inputs besides the document and style that change the look of
+/// tables and images.
+#[derive(Clone, Copy)]
+pub(crate) struct Extras<'a> {
+    pub widths: &'a super::ColumnWidths,
+    pub images: &'a ImageStates,
+    /// The width of an image being resized, shown before it is applied.
+    pub image_preview: Option<(BlockId, u32)>,
+}
+
 pub(crate) struct LayoutEnv<'a> {
     pub style: &'a EditorStyle,
-    pub widths: &'a super::ColumnWidths,
+    pub extras: Extras<'a>,
     pub ts: &'a WindowTextSystem,
     pub texts: &'a mut TextCache,
     pub frame: u64,
@@ -517,8 +533,36 @@ fn place(
         BlockKind::Image(image) => {
             let m = px(12.);
             let above = if ctx.first { Pixels::ZERO } else { m };
-            let w = image
-                .width
+            let shown_width = env
+                .extras
+                .image_preview
+                .filter(|(id, _)| *id == block.id)
+                .map(|(_, w)| w)
+                .or(image.width);
+            let info = env.extras.images.get(&image.src);
+            if let Some(ImageInfo::Ready {
+                width: iw,
+                height: ih,
+                ..
+            }) = info
+            {
+                // As wide as the image (or the width set for it), at most
+                // the content width, keeping the aspect ratio.
+                let natural = px(*iw as f32);
+                let w = shown_width
+                    .map_or(natural, |w| px(w as f32))
+                    .min(width)
+                    .max(px(40.));
+                let h = (w * (*ih as f32 / *iw as f32)).clamp(px(8.), px(4000.));
+                let bounds = Bounds::new(point(x, y + above), size(w, h));
+                out.decorations.push(Decoration::Image {
+                    bounds,
+                    src: image.src.clone(),
+                });
+                out.rects.push((block.id, RectKind::Image, bounds));
+                return (above, h, m);
+            }
+            let w = shown_width
                 .map_or(width, |w| px(w as f32).min(width))
                 .max(px(40.));
             let h = s.image_placeholder_height;
@@ -528,10 +572,15 @@ fn place(
                 color: s.code_background,
                 radius: s.image_radius,
             });
-            let label: SharedString = if image.alt.is_empty() {
+            let name: SharedString = if image.alt.is_empty() {
                 image.src.clone()
             } else {
                 image.alt.clone()
+            };
+            let label: SharedString = if matches!(info, Some(ImageInfo::Failed)) {
+                format!("{name} · could not be loaded").into()
+            } else {
+                name
             };
             if !label.is_empty() {
                 let mut spec = env.body();
@@ -656,7 +705,7 @@ fn place_table(
         }
     }
     let max_auto = MAX_COLUMN.max(width * 0.5);
-    let stored = env.widths.get(&id);
+    let stored = env.extras.widths.get(&id);
     let mut widths: Vec<Pixels> = natural
         .iter()
         .enumerate()
@@ -760,20 +809,15 @@ fn place_table(
 }
 
 /// Hash of everything that decides the layout of a top-level block.
-pub(crate) fn block_key(
-    block: &Block,
-    ctx: BlockCtx,
-    width: Pixels,
-    widths: &super::ColumnWidths,
-) -> u64 {
+pub(crate) fn block_key(block: &Block, ctx: BlockCtx, width: Pixels, extras: Extras<'_>) -> u64 {
     let mut h = DefaultHasher::new();
     ctx.hash(&mut h);
     width.as_f32().to_bits().hash(&mut h);
-    hash_block(block, &mut h, widths);
+    hash_block(block, &mut h, extras);
     h.finish()
 }
 
-fn hash_block(block: &Block, h: &mut DefaultHasher, widths: &super::ColumnWidths) {
+fn hash_block(block: &Block, h: &mut DefaultHasher, extras: Extras<'_>) {
     block.id.hash(h);
     std::mem::discriminant(&block.kind).hash(h);
     match &block.kind {
@@ -784,9 +828,22 @@ fn hash_block(block: &Block, h: &mut DefaultHasher, widths: &super::ColumnWidths
             img.alt.hash(h);
             img.src.hash(h);
             img.width.hash(h);
+            match extras.images.get(&img.src) {
+                Some(ImageInfo::Ready {
+                    image,
+                    width,
+                    height,
+                }) => (1u8, image.id.0, *width, *height).hash(h),
+                Some(ImageInfo::Failed) => 2u8.hash(h),
+                Some(ImageInfo::Loading) | None => 0u8.hash(h),
+            }
+            extras
+                .image_preview
+                .filter(|(id, _)| *id == block.id)
+                .hash(h);
         }
         BlockKind::Table(t) => {
-            for w in widths.get(&block.id).into_iter().flatten() {
+            for w in extras.widths.get(&block.id).into_iter().flatten() {
                 w.to_bits().hash(h);
             }
             for a in &t.align {
@@ -805,7 +862,7 @@ fn hash_block(block: &Block, h: &mut DefaultHasher, widths: &super::ColumnWidths
     hash_inline(&block.content, h);
     block.children.len().hash(h);
     for child in &block.children {
-        hash_block(child, h, widths);
+        hash_block(child, h, extras);
     }
 }
 

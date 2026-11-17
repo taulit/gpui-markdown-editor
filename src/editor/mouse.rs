@@ -26,6 +26,17 @@ enum Granularity {
     Block,
 }
 
+/// A selected image being resized by one of its handles.
+pub(super) struct ImageDrag {
+    pub id: BlockId,
+    /// Dragging the right handle (else the left one).
+    right: bool,
+    start_x: Pixels,
+    start_width: f32,
+    /// The width shown now, in pixels.
+    pub width: u32,
+}
+
 /// A selection being made with the mouse.
 pub(super) struct Drag {
     /// What the first click selected; the selection always contains it.
@@ -46,6 +57,7 @@ impl ViewSource for MarkdownEditor {
             marked: self.state.valid_marked(),
             hover: self.hover,
             open_handle: self.table_menu.map(|m| m.handle),
+            resolve_src: self.options.resolve_src.as_ref(),
         }
     }
 
@@ -67,6 +79,20 @@ impl ViewSource for MarkdownEditor {
         {
             drop(q);
             self.emit_link(block, &span, cx);
+            return;
+        }
+        if let Selection::Node(id) = self.state.selection
+            && let Some((right, bounds)) = q.image_handle_at(p, id)
+        {
+            drop(q);
+            let w = bounds.size.width.as_f32();
+            self.image_drag = Some(ImageDrag {
+                id,
+                right,
+                start_x: p.x,
+                start_width: w,
+                width: w.round() as u32,
+            });
             return;
         }
         let caret = self.state.selection.head().map(|h| h.block);
@@ -169,6 +195,14 @@ impl ViewSource for MarkdownEditor {
     }
 
     fn mouse_drag(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(drag) = &mut self.image_drag {
+            let dx = (event.position.x - drag.start_x).as_f32();
+            let dx = if drag.right { dx } else { -dx };
+            let max = self.view.content_width().as_f32();
+            drag.width = (drag.start_width + dx).clamp(40., max.max(40.)).round() as u32;
+            cx.notify();
+            return;
+        }
         if let Some(drag) = &self.column_drag {
             let widths = drag.widths_at(event.position.x);
             self.column_widths.insert(drag.table, widths);
@@ -211,8 +245,14 @@ impl ViewSource for MarkdownEditor {
         }
     }
 
-    fn mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn mouse_up(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.drag = None;
+        if let Some(drag) = self.image_drag.take() {
+            if (drag.width as f32 - drag.start_width).abs() >= 1. {
+                self.state.set_image_width(drag.id, Some(drag.width));
+            }
+            self.after_change(false, window, cx);
+        }
         if self.column_drag.take().is_some() {
             self.sync_meta(cx);
         }

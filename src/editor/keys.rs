@@ -335,11 +335,7 @@ impl MarkdownEditor {
                     self.state.delete_selection();
                 }
             }
-            Op::Paste => {
-                if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                    self.state.paste_text(&text);
-                }
-            }
+            Op::Paste => self.paste(cx),
             Op::Link => self.toggle_link(cx),
             Op::Cancel => {
                 // Without a menu Escape belongs to the host.
@@ -350,6 +346,29 @@ impl MarkdownEditor {
             }
         }
         self.after_change(keep_goal, window, cx);
+    }
+
+    /// Pastes the clipboard: image data through
+    /// [`EditorOptions::on_image`](crate::EditorOptions::on_image) as an
+    /// image block, else its text.
+    fn paste(&mut self, cx: &mut Context<Self>) {
+        let Some(item) = cx.read_from_clipboard() else {
+            return;
+        };
+        let image = item.entries().iter().find_map(|entry| match entry {
+            gpui::ClipboardEntry::Image(image) => Some(image.clone()),
+            _ => None,
+        });
+        if let Some(image) = image
+            && let Some(handler) = self.options.on_image.clone()
+            && let Some(src) = handler(image.bytes, image.format.mime_type())
+        {
+            self.state.insert_image(&src, "");
+            return;
+        }
+        if let Some(text) = item.text() {
+            self.state.paste_text(&text);
+        }
     }
 
     /// Writes the selection as Markdown to the clipboard. `false` if

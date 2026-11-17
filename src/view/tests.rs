@@ -59,6 +59,7 @@ fn layout_input<'a>(doc: &'a Document, style: &'a EditorStyle) -> LayoutInput<'a
         first_line_is_title: true,
         max_width: Some(px(700.)),
         column_widths: &NO_WIDTHS,
+        image_preview: None,
     }
 }
 
@@ -78,6 +79,7 @@ fn input<'a>(
         marked: None,
         hover: None,
         open_handle: None,
+        resolve_src: None,
     }
 }
 

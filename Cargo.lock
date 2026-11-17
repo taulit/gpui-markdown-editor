@@ -2324,6 +2324,7 @@ dependencies = [
  "gpui-pre",
  "gpui-pre-platform",
  "html5ever 0.40.1",
+ "image",
  "indoc",
  "insta",
  "proptest",

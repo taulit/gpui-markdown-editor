@@ -404,6 +404,24 @@ impl EditorState {
         }))
     }
 
+    /// Sets the display width of image block `id` (written as
+    /// `![alt|width](src)`), or removes it.
+    pub(crate) fn set_image_width(&mut self, id: BlockId, width: Option<u32>) -> bool {
+        let Some(BlockKind::Image(data)) = self.doc.block(id).map(|b| b.kind.clone()) else {
+            return false;
+        };
+        if data.width == width {
+            return false;
+        }
+        self.transact(EditKind::Other, None, "", move |tr, sel| {
+            tr.step(Step::SetAttr {
+                block: id,
+                attr: Attr::Image(ImageData { width, ..data }),
+            })?;
+            Ok(sel.clone())
+        })
+    }
+
     /// Inserts an empty table and puts the caret into its first cell.
     pub(crate) fn insert_table(&mut self, rows: usize, cols: usize) -> bool {
         let rows = rows.clamp(1, MAX_TABLE_SIZE);

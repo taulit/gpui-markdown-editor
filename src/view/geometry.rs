@@ -251,6 +251,31 @@ impl<'a> ViewQuery<'a> {
         Some(g)
     }
 
+    /// The resize handle of the image block `id` under `p`: whether it is
+    /// the right one, and the image's window bounds.
+    pub fn image_handle_at(
+        &mut self,
+        p: Point<Pixels>,
+        id: BlockId,
+    ) -> Option<(bool, Bounds<Pixels>)> {
+        let ix = self.state.locate(self.input.document, id)?;
+        let layout = self.layout(ix)?;
+        let r = layout
+            .rects
+            .iter()
+            .find(|(r, kind, _)| *r == id && *kind == RectKind::Image)?
+            .2;
+        let r = self.state.window_rect(ix, r);
+        let [left, right] = super::paint::image_handles(r);
+        if right.dilate(px(4.)).contains(&p) {
+            Some((true, r))
+        } else if left.dilate(px(4.)).contains(&p) {
+            Some((false, r))
+        } else {
+            None
+        }
+    }
+
     /// The checklist item whose checkbox is under `p`.
     pub fn checkbox_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
         let d = self.state.doc_point(p);

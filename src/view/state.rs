@@ -72,6 +72,8 @@ pub(crate) struct ViewState {
     tops_dirty: bool,
     blocks: HashMap<BlockId, CachedBlock>,
     texts: TextCache,
+    /// Load states of the images near the viewport, by source.
+    pub images: super::images::ImageStates,
     /// Nested block or cell id -> top-level id, filled by layouts.
     node_top: HashMap<BlockId, BlockId>,
     style: Option<EditorStyle>,
@@ -107,6 +109,7 @@ impl Default for ViewState {
             tops_dirty: true,
             blocks: HashMap::new(),
             texts: TextCache::default(),
+            images: Default::default(),
             node_top: HashMap::new(),
             style: None,
             title: false,
@@ -299,7 +302,12 @@ impl ViewState {
     ) -> Option<Arc<BlockLayout>> {
         let block = input.document.blocks().get(ix)?;
         let ctx = self.ctx(input.document, ix);
-        let key = block_key(block, ctx, self.width, input.column_widths);
+        let extras = super::layout::Extras {
+            widths: input.column_widths,
+            images: &self.images,
+            image_preview: input.image_preview,
+        };
+        let key = block_key(block, ctx, self.width, extras);
         let frame = self.frame;
         if let Some(cached) = self.blocks.get_mut(&block.id)
             && cached.key == key
@@ -311,7 +319,7 @@ impl ViewState {
         }
         let mut env = LayoutEnv {
             style: input.style,
-            widths: input.column_widths,
+            extras,
             ts,
             texts: &mut self.texts,
             frame,

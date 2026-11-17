@@ -105,6 +105,7 @@ pub struct MarkdownEditor {
     hover: Option<gpui::Point<Pixels>>,
     table_menu: Option<table::TableMenu>,
     column_drag: Option<table::ColumnDrag>,
+    image_drag: Option<mouse::ImageDrag>,
     _subscriptions: [Subscription; 2],
 }
 
@@ -155,6 +156,7 @@ impl MarkdownEditor {
             hover: None,
             table_menu: None,
             column_drag: None,
+            image_drag: None,
             _subscriptions: subscriptions,
         }
     }
@@ -356,6 +358,7 @@ impl MarkdownEditor {
             first_line_is_title: self.options.first_line_is_title,
             max_width: self.options.max_width,
             column_widths: &self.column_widths,
+            image_preview: self.image_drag.as_ref().map(|d| (d.id, d.width)),
         }
     }
 

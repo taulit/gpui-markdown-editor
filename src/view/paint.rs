@@ -34,6 +34,7 @@ enum Overlay {
 pub(crate) struct Frame {
     bounds: Bounds<Pixels>,
     under: Vec<PaintQuad>,
+    images: Vec<(Bounds<Pixels>, Arc<gpui::RenderImage>, Pixels)>,
     texts: Vec<TextOp>,
     over: Vec<Overlay>,
 }
@@ -105,6 +106,15 @@ pub(crate) fn build_frame(
                     align: *align,
                     width: *width,
                 }),
+                Decoration::Image { bounds, src } => {
+                    if let Some(super::images::ImageInfo::Ready { image, .. }) =
+                        state.images.get(src)
+                    {
+                        frame
+                            .images
+                            .push((*bounds + v.origin, image.clone(), style.image_radius));
+                    }
+                }
                 Decoration::Checkbox {
                     bounds, checked, ..
                 } => {
@@ -282,6 +292,18 @@ pub(crate) fn build_frame(
                         style.node_selection_color,
                         Default::default(),
                     )));
+                    if *kind == super::layout::RectKind::Image {
+                        for h in image_handles(*r + v.origin) {
+                            frame.over.push(Overlay::Quad(quad(
+                                h,
+                                h.size.width / 2.,
+                                style.node_selection_color,
+                                px(1.5),
+                                gpui::white(),
+                                Default::default(),
+                            )));
+                        }
+                    }
                 }
             }
         }
@@ -347,6 +369,18 @@ fn paint_affordance(
         }
         Affordance::ColumnBorder { .. } => {}
     }
+}
+
+/// The resize handles of a selected image with bounds `r`: pills inside
+/// its left and right edge. The second one is the right handle.
+pub(crate) fn image_handles(r: Bounds<Pixels>) -> [Bounds<Pixels>; 2] {
+    let h = px(40.).min(r.size.height - px(8.)).max(px(8.));
+    let w = px(7.);
+    let y = r.center().y - h / 2.;
+    [
+        Bounds::new(point(r.left() + px(8.), y), size(w, h)),
+        Bounds::new(point(r.right() - px(8.) - w, y), size(w, h)),
+    ]
 }
 
 fn find_node(visible: &[Visible], id: BlockId) -> Option<(&Visible, &super::layout::NodeLayout)> {
@@ -465,6 +499,16 @@ impl Frame {
         window.with_content_mask(Some(mask), |window| {
             for q in &self.under {
                 window.paint_quad(q.clone());
+            }
+            for (bounds, image, radius) in &self.images {
+                let _ = window.paint_image(
+                    *bounds,
+                    *bounds,
+                    gpui::Corners::all(*radius),
+                    image.clone(),
+                    0,
+                    false,
+                );
             }
             for t in &self.texts {
                 if t.origin.y > self.bounds.bottom()
