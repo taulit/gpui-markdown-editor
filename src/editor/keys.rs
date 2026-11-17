@@ -71,6 +71,7 @@ actions!(
         CopySelection,
         CutSelection,
         PasteClipboard,
+        Cancel,
     ]
 );
 
@@ -143,6 +144,7 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
         ("secondary-c", Box::new(CopySelection)),
         ("secondary-x", Box::new(CutSelection)),
         ("secondary-v", Box::new(PasteClipboard)),
+        ("escape", Box::new(Cancel)),
     ];
     if mac {
         keys.extend([
@@ -201,6 +203,8 @@ pub(super) enum Op {
     Cut,
     Paste,
     Link,
+    /// Escape: closes the open table menu.
+    Cancel,
 }
 
 /// A caret movement.
@@ -284,6 +288,7 @@ pub(super) fn bind_actions(root: Div, cx: &mut Context<MarkdownEditor>) -> Div {
         CopySelection => Op::Copy,
         CutSelection => Op::Cut,
         PasteClipboard => Op::Paste,
+        Cancel => Op::Cancel,
     )
 }
 
@@ -336,6 +341,13 @@ impl MarkdownEditor {
                 }
             }
             Op::Link => self.toggle_link(cx),
+            Op::Cancel => {
+                // Without a menu Escape belongs to the host.
+                if self.table_menu.take().is_none() {
+                    cx.propagate();
+                    return;
+                }
+            }
         }
         self.after_change(keep_goal, window, cx);
     }

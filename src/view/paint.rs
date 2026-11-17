@@ -153,6 +153,18 @@ pub(crate) fn build_frame(
     }
 
     let doc = input.layout.document;
+    let caret = input.selection.and_then(Selection::head).map(|p| p.block);
+    for v in &visible {
+        for g in super::table_ui::tables(&v.layout, doc) {
+            let hover = input.hover.map(|h| h - v.origin);
+            let Some(shown) = super::table_ui::shown(&g, hover, caret) else {
+                continue;
+            };
+            for (a, r) in shown {
+                paint_affordance(&mut frame.over, a, r + v.origin, input, style);
+            }
+        }
+    }
     for range in input.highlights {
         let (Some(a), Some(b)) = (keys.get(&range.start.block), keys.get(&range.end.block)) else {
             if range.start.block == range.end.block {
@@ -288,6 +300,53 @@ pub(crate) fn build_frame(
     }
 
     frame
+}
+
+/// A "+" bar or a row or column handle.
+fn paint_affordance(
+    out: &mut Vec<Overlay>,
+    a: super::table_ui::Affordance,
+    r: Bounds<Pixels>,
+    input: &ViewInput<'_>,
+    style: &crate::style::EditorStyle,
+) {
+    use super::table_ui::Affordance;
+    let hovered = input.hover.is_some_and(|h| r.contains(&h));
+    let open = input.open_handle == Some(a);
+    match a {
+        Affordance::AddRow { .. } | Affordance::AddColumn { .. } => {
+            let bg = if hovered {
+                style.table_border_color
+            } else {
+                style.table_header_background
+            };
+            out.push(Overlay::Quad(fill(r, bg).corner_radii(px(4.))));
+            let c = r.center();
+            let (arm, t) = (px(4.), px(1.5));
+            let color = style.muted_color;
+            out.push(Overlay::Quad(fill(
+                Bounds::new(point(c.x - arm, c.y - t / 2.), size(arm * 2., t)),
+                color,
+            )));
+            out.push(Overlay::Quad(fill(
+                Bounds::new(point(c.x - t / 2., c.y - arm), size(t, arm * 2.)),
+                color,
+            )));
+        }
+        Affordance::RowHandle { .. } | Affordance::ColumnHandle { .. } => {
+            let color = if open {
+                style.node_selection_color
+            } else if hovered {
+                style.muted_color
+            } else {
+                style.faint_color
+            };
+            out.push(Overlay::Quad(
+                fill(r, color.opacity(0.55)).corner_radii(px(3.)),
+            ));
+        }
+        Affordance::ColumnBorder { .. } => {}
+    }
 }
 
 fn find_node(visible: &[Visible], id: BlockId) -> Option<(&Visible, &super::layout::NodeLayout)> {

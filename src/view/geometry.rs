@@ -13,6 +13,7 @@ use crate::model::{BlockId, MarkSpan, TextPos, TextRange};
 use super::LayoutInput;
 use super::layout::{BlockLayout, Decoration, RectKind};
 use super::state::ViewState;
+use super::table_ui::{self, Affordance, TableGeom};
 use super::text::{floor_boundary, prev_boundary};
 
 /// Geometry queries on a [`DocumentView`](super::DocumentView), opened with
@@ -163,6 +164,91 @@ impl<'a> ViewQuery<'a> {
                     && r.contains(&local)
             })
             .map(|(id, _, _)| *id)
+    }
+
+    /// The table affordance under `p`: a "+" bar or handle shown for the
+    /// mouse at `hover` and the caret in `caret`, or a column border.
+    pub fn affordance_at(
+        &mut self,
+        p: Point<Pixels>,
+        hover: Option<Point<Pixels>>,
+        caret: Option<BlockId>,
+    ) -> Option<Affordance> {
+        let d = self.state.doc_point(p);
+        let hover = hover.map(|h| self.state.doc_point(h));
+        let ix = self.state.slot_at_y(d.y)?;
+        // The bars and handles reach into the neighbouring slots.
+        for j in [Some(ix), ix.checked_sub(1), Some(ix + 1)]
+            .into_iter()
+            .flatten()
+        {
+            if j >= self.state.slots.len() {
+                continue;
+            }
+            let Some(layout) = self.layout(j) else {
+                continue;
+            };
+            let top = self.state.top_of(j);
+            let local = d - point(Pixels::ZERO, top);
+            let hover = hover.map(|h| h - point(Pixels::ZERO, top));
+            for g in table_ui::tables(&layout, self.input.document) {
+                if let Some(shown) = table_ui::shown(&g, hover, caret)
+                    && let Some((a, _)) = shown.iter().find(|(_, r)| r.contains(&local))
+                {
+                    return Some(*a);
+                }
+                if let Some(a) = g.border_at(local) {
+                    return Some(a);
+                }
+            }
+        }
+        None
+    }
+
+    /// The table whose affordances the mouse at `p` shows, with the cell
+    /// under it.
+    pub fn table_focus_at(
+        &mut self,
+        p: Point<Pixels>,
+    ) -> Option<(BlockId, Option<(usize, usize)>)> {
+        let d = self.state.doc_point(p);
+        let ix = self.state.slot_at_y(d.y)?;
+        for j in [Some(ix), ix.checked_sub(1), Some(ix + 1)]
+            .into_iter()
+            .flatten()
+        {
+            if j >= self.state.slots.len() {
+                continue;
+            }
+            let Some(layout) = self.layout(j) else {
+                continue;
+            };
+            let local = d - point(Pixels::ZERO, self.state.top_of(j));
+            for g in table_ui::tables(&layout, self.input.document) {
+                if g.hover_area().contains(&local) {
+                    return Some((g.table, g.cell_at(local)));
+                }
+            }
+        }
+        None
+    }
+
+    /// The geometry of `table` in window coordinates.
+    pub fn table_geom(&mut self, table: BlockId) -> Option<TableGeom> {
+        let ix = self.state.locate(self.input.document, table)?;
+        let layout = self.layout(ix)?;
+        let mut g = table_ui::tables(&layout, self.input.document)
+            .into_iter()
+            .find(|g| g.table == table)?;
+        let origin = self.state.window_rect(ix, Bounds::default()).origin;
+        g.bounds = g.bounds + origin;
+        for r in &mut g.rows {
+            *r = (r.0 + origin.y, r.1 + origin.y);
+        }
+        for c in &mut g.cols {
+            *c = (c.0 + origin.x, c.1 + origin.x);
+        }
+        Some(g)
     }
 
     /// The checklist item whose checkbox is under `p`.

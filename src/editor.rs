@@ -3,6 +3,7 @@
 mod input;
 mod keys;
 mod mouse;
+mod table;
 #[cfg(test)]
 mod tests;
 
@@ -97,6 +98,9 @@ pub struct MarkdownEditor {
     blink_epoch: usize,
     blink: Option<Task<()>>,
     drag: Option<mouse::Drag>,
+    /// The mouse position while it is over the document.
+    hover: Option<gpui::Point<Pixels>>,
+    table_menu: Option<table::TableMenu>,
     _subscriptions: [Subscription; 2],
 }
 
@@ -143,6 +147,8 @@ impl MarkdownEditor {
             blink_epoch: 0,
             blink: None,
             drag: None,
+            hover: None,
+            table_menu: None,
             _subscriptions: subscriptions,
         }
     }
@@ -163,6 +169,7 @@ impl MarkdownEditor {
         self.highlights.clear();
         self.goal_x = None;
         self.drag = None;
+        self.table_menu = None;
         self.view.reset();
         cx.notify();
     }
@@ -422,6 +429,7 @@ impl Render for MarkdownEditor {
         keys::bind_actions(root, cx)
             .child(DocumentElement::new(self.view.clone(), cx.entity()))
             .child(Scrollbar::vertical(&self.view))
+            .children(self.render_table_menu(cx))
     }
 }
 

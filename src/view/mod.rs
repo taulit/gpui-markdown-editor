@@ -16,6 +16,7 @@ mod layout;
 mod paint;
 mod scroll;
 mod state;
+mod table_ui;
 mod text;
 
 #[cfg(test)]
@@ -38,6 +39,7 @@ pub(crate) use element::DocumentElement;
 pub(crate) use geometry::ViewQuery;
 #[cfg(test)]
 pub(crate) use state::ViewStats;
+pub(crate) use table_ui::Affordance;
 
 /// What layout depends on.
 #[derive(Clone, Copy, Debug)]
@@ -61,6 +63,11 @@ pub(crate) struct ViewInput<'a> {
     pub caret_visible: bool,
     /// Text being composed by an input method, drawn underlined.
     pub marked: Option<(BlockId, Range<usize>)>,
+    /// The mouse position while it is over the editor, for the table
+    /// affordances.
+    pub hover: Option<gpui::Point<Pixels>>,
+    /// The table handle whose menu is open, drawn highlighted.
+    pub open_handle: Option<Affordance>,
 }
 
 /// An entity a [`DocumentElement`] can render. The element routes text
@@ -73,6 +80,13 @@ pub(crate) trait ViewSource: EntityInputHandler {
     /// A mouse move while the left button is pressed.
     fn mouse_drag(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>);
     fn mouse_up(&mut self, event: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>);
+    /// A mouse move without a pressed button; `None` when the mouse left.
+    fn mouse_hover(
+        &mut self,
+        position: Option<gpui::Point<Pixels>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    );
 }
 
 /// The view state of one editor, shared by the editor and its element.

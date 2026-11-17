@@ -8,7 +8,7 @@ use gpui::{
 };
 
 use super::paint::Frame;
-use super::{DocumentView, LayoutInput, ViewSource};
+use super::{Affordance, DocumentView, ViewInput, ViewSource};
 
 /// Paints the document of `source` with the state of `view`, filling the
 /// space it is given. Scrolls with the mouse wheel on its own, hands text
@@ -43,13 +43,19 @@ pub(crate) struct Prepaint {
 /// plain click on a link places the caret.
 fn cursor_at(
     view: &DocumentView,
-    input: LayoutInput<'_>,
+    input: &ViewInput<'_>,
     p: Point<Pixels>,
     window: &Window,
     cx: &App,
 ) -> CursorStyle {
     let ts = window.text_system().clone();
-    let mut q = view.query(input, &ts);
+    let mut q = view.query(input.layout, &ts);
+    let caret = input.selection.and_then(|s| s.head()).map(|h| h.block);
+    match q.affordance_at(p, input.hover.or(Some(p)), caret) {
+        Some(Affordance::ColumnBorder { .. }) => return CursorStyle::ResizeLeftRight,
+        Some(_) => return CursorStyle::PointingHand,
+        None => {}
+    }
     if q.checkbox_at(p).is_some() || (window.modifiers().secondary(cx) && q.link_at(p).is_some()) {
         CursorStyle::PointingHand
     } else {
@@ -96,13 +102,7 @@ impl<T: ViewSource> Element for DocumentElement<T> {
         let input = source.view_input();
         let frame = self.view.prepare_frame(&input, bounds, &ts);
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-        let cursor = cursor_at(
-            &self.view,
-            input.layout,
-            window.mouse_position(),
-            window,
-            cx,
-        );
+        let cursor = cursor_at(&self.view, &input, window.mouse_position(), window, cx);
         Prepaint {
             frame,
             hitbox,
@@ -168,9 +168,12 @@ impl<T: ViewSource> Element for DocumentElement<T> {
             if event.pressed_button == Some(MouseButton::Left) {
                 source.update(cx, |source, cx| source.mouse_drag(event, window, cx));
             } else if move_hitbox.is_hovered(window) {
+                source.update(cx, |source, cx| {
+                    source.mouse_hover(Some(event.position), window, cx)
+                });
                 let now = cursor_at(
                     &view,
-                    source.read(cx).view_input().layout,
+                    &source.read(cx).view_input(),
                     event.position,
                     window,
                     cx,
@@ -178,6 +181,8 @@ impl<T: ViewSource> Element for DocumentElement<T> {
                 if now != cursor {
                     cx.notify(source.entity_id());
                 }
+            } else {
+                source.update(cx, |source, cx| source.mouse_hover(None, window, cx));
             }
         });
 

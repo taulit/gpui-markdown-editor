@@ -72,6 +72,8 @@ fn input<'a>(
         highlights: &[],
         caret_visible: true,
         marked: None,
+        hover: None,
+        open_handle: None,
     }
 }
 

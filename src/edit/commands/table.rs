@@ -39,7 +39,6 @@ impl EditorState {
     }
 
     /// The cell under the caret.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn current_cell(&self) -> Option<CellAt> {
         self.cell_at(self.selection.head()?.block)
     }
@@ -114,7 +113,6 @@ impl EditorState {
     }
 
     /// Inserts an empty row above or below the caret's row.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_insert_row(&mut self, below: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -123,7 +121,6 @@ impl EditorState {
     }
 
     /// Inserts an empty column left or right of the caret's column.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_insert_column(&mut self, right: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -152,7 +149,6 @@ impl EditorState {
 
     /// Removes the caret's row. The last row cannot be removed; delete the
     /// table as a node instead.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_remove_row(&mut self) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -181,7 +177,6 @@ impl EditorState {
     }
 
     /// Removes the caret's column. The last column cannot be removed.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_remove_column(&mut self) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -210,7 +205,6 @@ impl EditorState {
     }
 
     /// Moves the caret's row up or down by one.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_move_row(&mut self, down: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -233,7 +227,6 @@ impl EditorState {
     }
 
     /// Moves the caret's column left or right by one.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_move_column(&mut self, right: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -256,7 +249,6 @@ impl EditorState {
     }
 
     /// Sets the alignment of the caret's column.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_set_align(&mut self, align: Align) -> bool {
         let Some(at) = self.current_cell() else {
             return false;

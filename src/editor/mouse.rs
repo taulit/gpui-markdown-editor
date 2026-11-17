@@ -4,7 +4,8 @@ use std::cmp::Ordering;
 use std::time::Duration;
 
 use gpui::{
-    Context, FocusHandle, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Task, Window,
+    Context, FocusHandle, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Task,
+    Window, point, px,
 };
 
 use super::MarkdownEditor;
@@ -12,7 +13,7 @@ use crate::edit::Selection;
 use crate::event::EditorEvent;
 use crate::extensions::{Tag, WikiLink};
 use crate::model::{BlockId, BlockKind, Mark, MarkSpan, TextRange};
-use crate::view::{ViewInput, ViewSource};
+use crate::view::{Affordance, ViewInput, ViewSource};
 
 /// How often the view scrolls while the mouse is dragged outside of it.
 const AUTOSCROLL_INTERVAL: Duration = Duration::from_millis(40);
@@ -43,6 +44,8 @@ impl ViewSource for MarkdownEditor {
             highlights: &self.highlights,
             caret_visible: self.focused && self.caret_on,
             marked: self.state.valid_marked(),
+            hover: self.hover,
+            open_handle: self.table_menu.map(|m| m.handle),
         }
     }
 
@@ -53,6 +56,7 @@ impl ViewSource for MarkdownEditor {
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.focus.focus(window, cx);
         self.drag = None;
+        self.table_menu = None;
         let p = event.position;
         let ts = window.text_system().clone();
         let view = self.view.clone();
@@ -64,6 +68,24 @@ impl ViewSource for MarkdownEditor {
             drop(q);
             self.emit_link(block, &span, cx);
             return;
+        }
+        let caret = self.state.selection.head().map(|h| h.block);
+        if let Some(a) = q.affordance_at(p, self.hover.or(Some(p)), caret) {
+            let anchor = match a {
+                Affordance::RowHandle { table, row } => q
+                    .table_geom(table)
+                    .map(|g| point(g.bounds.left() - px(16.), g.rows[row].1)),
+                Affordance::ColumnHandle { table, col } => q
+                    .table_geom(table)
+                    .map(|g| point(g.cols[col].0, g.bounds.top())),
+                _ => None,
+            }
+            .unwrap_or(p);
+            drop(q);
+            if self.click_affordance(a, anchor, window, cx) {
+                return;
+            }
+            q = view.query(self.layout_input(), &ts);
         }
         if let Some(item) = q.checkbox_at(p) {
             drop(q);
@@ -170,6 +192,31 @@ impl ViewSource for MarkdownEditor {
 
     fn mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
         self.drag = None;
+    }
+
+    fn mouse_hover(
+        &mut self,
+        position: Option<Point<Pixels>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if position == self.hover {
+            return;
+        }
+        let ts = window.text_system().clone();
+        let view = self.view.clone();
+        let mut q = view.query(self.layout_input(), &ts);
+        let caret = self.state.selection.head().map(|h| h.block);
+        // Repaint only when what the table affordances show changes.
+        let mut key = |p: Option<Point<Pixels>>| {
+            p.map(|p| (q.table_focus_at(p), q.affordance_at(p, Some(p), caret)))
+        };
+        let changed = key(self.hover) != key(position);
+        drop(q);
+        self.hover = position;
+        if changed {
+            cx.notify();
+        }
     }
 }
 

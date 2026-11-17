@@ -180,3 +180,146 @@ fn cut_a_rectangle(cx: &mut TestAppContext) {
     assert_eq!(copied, "|  b  | c   |\n| :-: | --- |");
     assert_eq!(caret(&editor, cx), "‸");
 }
+
+/// The window bounds of the affordance `a`, found by scanning around the
+/// table with the view's own hit testing.
+fn affordance_point(
+    editor: &Entity<MarkdownEditor>,
+    cx: &mut VisualTestContext,
+    want: impl Fn(&crate::view::Affordance) -> bool,
+) -> Point<Pixels> {
+    editor.update_in(cx, |editor, window, _| {
+        let ts = window.text_system().clone();
+        let view = editor.view.clone();
+        let caret = editor.state.selection.head().map(|h| h.block);
+        let mut q = view.query(editor.layout_input(), &ts);
+        for y in (0..600).step_by(2) {
+            for x in (0..800).step_by(2) {
+                let p = point(px(x as f32), px(y as f32));
+                if q.affordance_at(p, Some(p), caret).is_some_and(|a| want(&a)) {
+                    return p;
+                }
+            }
+        }
+        panic!("affordance not found");
+    })
+}
+
+fn menu_click(cx: &mut VisualTestContext, entry: &'static str) {
+    cx.run_until_parked();
+    let selector: &'static str = Box::leak(format!("table-menu-{entry}").into_boxed_str());
+    let bounds = cx.debug_bounds(selector).expect("menu entry");
+    cx.simulate_click(bounds.center(), Modifiers::none());
+}
+
+use crate::view::Affordance;
+
+#[gpui::test]
+fn plus_bars_add_a_row_and_a_column(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, TABLE);
+    let a = cell(&editor, cx, 0, 0, 0);
+    select(&editor, cx, pos(a, 0), pos(a, 0));
+    let p = affordance_point(&editor, cx, |a| matches!(a, Affordance::AddRow { .. }));
+    cx.simulate_click(p, Modifiers::none());
+    assert_eq!(
+        md(&editor, cx),
+        "| a   | bb  |\n| --- | --- |\n| ccc | d   |\n|     |     |\n"
+    );
+    let p = affordance_point(&editor, cx, |a| matches!(a, Affordance::AddColumn { .. }));
+    cx.simulate_click(p, Modifiers::none());
+    assert_eq!(
+        md(&editor, cx),
+        "| a   | bb  |     |\n| --- | --- | --- |\n| ccc | d   |     |\n|     |     |     |\n"
+    );
+    cx.simulate_input("z");
+    assert_eq!(caret(&editor, cx), "z‸");
+    press(cx, "secondary-z");
+    press(cx, "secondary-z");
+    press(cx, "secondary-z");
+    assert_eq!(md(&editor, cx), TABLE);
+}
+
+#[gpui::test]
+fn row_menu_inserts_moves_and_deletes(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, GRID);
+    let d = cell(&editor, cx, 0, 2, 0);
+    select(&editor, cx, pos(d, 0), pos(d, 0));
+    let handle = affordance_point(&editor, cx, |a| {
+        matches!(a, Affordance::RowHandle { row: 2, .. })
+    });
+
+    cx.simulate_click(handle, Modifiers::none());
+    menu_click(cx, "move-up");
+    assert_eq!(
+        md(&editor, cx),
+        "| h1  | h2  | h3  |\n| --- | :-: | --- |\n| d   |  e  | f   |\n| a   |  b  | c   |\n"
+    );
+    // The handle follows the moved row.
+    let handle = affordance_point(&editor, cx, |a| {
+        matches!(a, Affordance::RowHandle { row: 1, .. })
+    });
+    cx.simulate_click(handle, Modifiers::none());
+    menu_click(cx, "insert-below");
+    assert_eq!(
+        editor.read_with(cx, |e, _| e.state.current_cell().unwrap().row),
+        2
+    );
+    let handle = affordance_point(&editor, cx, |a| {
+        matches!(a, Affordance::RowHandle { row: 2, .. })
+    });
+    cx.simulate_click(handle, Modifiers::none());
+    menu_click(cx, "delete");
+    press(cx, "secondary-z");
+    press(cx, "secondary-z");
+    press(cx, "secondary-z");
+    assert_eq!(md(&editor, cx), GRID);
+}
+
+#[gpui::test]
+fn column_menu_aligns_moves_and_deletes(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, GRID);
+    let h1 = cell(&editor, cx, 0, 0, 0);
+    select(&editor, cx, pos(h1, 0), pos(h1, 0));
+    let handle = |editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext, col: usize| {
+        affordance_point(
+            editor,
+            cx,
+            move |a| matches!(a, Affordance::ColumnHandle { col: c, .. } if *c == col),
+        )
+    };
+    let p = handle(&editor, cx, 0);
+    cx.simulate_click(p, Modifiers::none());
+    menu_click(cx, "align-right");
+    assert_eq!(
+        md(&editor, cx),
+        "|  h1 | h2  | h3  |\n| --: | :-: | --- |\n|   a |  b  | c   |\n|   d |  e  | f   |\n"
+    );
+    let p = handle(&editor, cx, 0);
+    cx.simulate_click(p, Modifiers::none());
+    menu_click(cx, "move-right");
+    assert_eq!(
+        md(&editor, cx),
+        "| h2  |  h1 | h3  |\n| :-: | --: | --- |\n|  b  |   a | c   |\n|  e  |   d | f   |\n"
+    );
+    let p = handle(&editor, cx, 1);
+    cx.simulate_click(p, Modifiers::none());
+    menu_click(cx, "delete");
+    assert_eq!(
+        md(&editor, cx),
+        "| h2  | h3  |\n| :-: | --- |\n|  b  | c   |\n|  e  | f   |\n"
+    );
+    let p = handle(&editor, cx, 1);
+    cx.simulate_click(p, Modifiers::none());
+    menu_click(cx, "insert-left");
+    assert_eq!(caret(&editor, cx), "‸");
+    // Escape closes an open menu.
+    let p = handle(&editor, cx, 0);
+    cx.simulate_click(p, Modifiers::none());
+    assert!(editor.read_with(cx, |e, _| e.table_menu.is_some()));
+    press(cx, "escape");
+    assert!(editor.read_with(cx, |e, _| e.table_menu.is_none()));
+    for _ in 0..4 {
+        press(cx, "secondary-z");
+    }
+    assert_eq!(md(&editor, cx), GRID);
+}
