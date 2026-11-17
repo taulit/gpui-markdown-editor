@@ -439,6 +439,9 @@ impl EditorState {
         let in_code = order::block_at(&self.doc.blocks, loc.block_path())
             .is_some_and(|block| matches!(block.kind, BlockKind::CodeBlock { .. }));
         if in_code {
+            if !self.selection.is_caret() {
+                return self.shift_code_lines(true);
+            }
             return self.type_text(CODE_INDENT, now);
         }
         self.indent()
@@ -459,9 +462,97 @@ impl EditorState {
         let in_code = order::block_at(&self.doc.blocks, loc.block_path())
             .is_some_and(|block| matches!(block.kind, BlockKind::CodeBlock { .. }));
         if in_code {
+            if !self.selection.is_caret() {
+                return self.shift_code_lines(false);
+            }
             return self.dedent_code_line(head);
         }
         self.outdent()
+    }
+
+    /// Tab and Shift+Tab with a selection in a code block: indents or
+    /// outdents every selected line and keeps the selection on them.
+    fn shift_code_lines(&mut self, indent: bool) -> bool {
+        let Selection::Text { anchor, head } = self.selection.clone() else {
+            return false;
+        };
+        if anchor.block != head.block {
+            return false;
+        }
+        let node = head.block;
+        let Some(text) = self.text_of(node).map(|i| i.text.clone()) else {
+            return false;
+        };
+        let (from, to) = (
+            anchor.offset.min(head.offset),
+            anchor.offset.max(head.offset),
+        );
+        let first = text[..from].rfind('\n').map_or(0, |i| i + 1);
+        // A selection ending at the start of a line leaves that line alone.
+        let last = if to > from && text[..to].ends_with('\n') {
+            to - 1
+        } else {
+            to
+        };
+        let mut starts = vec![first];
+        starts.extend(
+            text[first..last]
+                .match_indices('\n')
+                .map(|(i, _)| first + i + 1),
+        );
+        // (line start, bytes inserted (+) or removed (-)), last line first.
+        let edits: Vec<(usize, usize)> = starts
+            .iter()
+            .map(|&start| {
+                let len = if indent {
+                    CODE_INDENT.len()
+                } else {
+                    text[start..]
+                        .bytes()
+                        .take(CODE_INDENT.len())
+                        .take_while(|b| *b == b' ')
+                        .count()
+                };
+                (start, len)
+            })
+            .filter(|(_, len)| *len > 0)
+            .collect();
+        if edits.is_empty() {
+            return false;
+        }
+        let shift = |offset: usize| -> usize {
+            let mut out = offset;
+            for &(start, len) in &edits {
+                if indent {
+                    if start < offset || (start == offset && start == first) {
+                        out += len;
+                    }
+                } else if start < offset {
+                    out -= len.min(offset - start);
+                }
+            }
+            out
+        };
+        let after = Selection::Text {
+            anchor: TextPos {
+                block: node,
+                offset: shift(anchor.offset),
+            },
+            head: TextPos {
+                block: node,
+                offset: shift(head.offset),
+            },
+        };
+        self.transact(EditKind::Other, None, "", move |tr, _| {
+            for &(start, len) in edits.iter().rev() {
+                if indent {
+                    tr.replace(node, start..start, Inline::plain(CODE_INDENT))?;
+                } else {
+                    tr.replace(node, start..start + len, Inline::default())?;
+                }
+            }
+            Ok(after)
+        })
     }
 
     fn dedent_code_line(&mut self, head: TextPos) -> bool {

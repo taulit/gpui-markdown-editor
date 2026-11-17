@@ -300,3 +300,14 @@ fn plain_text_with_lines_becomes_paragraphs() {
     state.insert_plain_text("x\ny");
     assert_eq!(md(&state), "```\nax\ny\n```\n");
 }
+
+#[test]
+fn tab_with_a_selection_in_code_indents_every_line() {
+    let mut state = ed("```\nab«c\ndef\ngh‸i\nend\n```\n");
+    assert!(state.tab(Instant::now()));
+    assert_eq!(md(&state), "```\n    abc\n    def\n    ghi\nend\n```\n");
+    assert_eq!(caret(&state), "    ab«c\n    def\n    gh‸i\nend");
+    assert!(state.shift_tab());
+    assert_eq!(md(&state), "```\nabc\ndef\nghi\nend\n```\n");
+    assert_eq!(caret(&state), "ab«c\ndef\ngh‸i\nend");
+}
