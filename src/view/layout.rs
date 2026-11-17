@@ -668,7 +668,7 @@ fn place_table(
     let total: Pixels = widths.iter().copied().sum();
     if total > width {
         for w in &mut widths {
-            *w = *w * (width / total);
+            *w *= width / total;
         }
     }
     let width: Pixels = widths.iter().copied().sum();
