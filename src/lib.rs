@@ -105,6 +105,10 @@
 //!   host entries to the slash menu.
 //! - `ui` switches the built-in [`UiParts`] on or off, to replace them with
 //!   your own UI driven by commands.
+//! - `input_rules` (default `true`) turns typed Markdown (`# `, `- `,
+//!   `**x**`, the input rules of extensions) into formatting; with `false`
+//!   it stays literal text. The slash menu and the completions are not
+//!   input rules and have their own switches (`ui`, `completions`).
 //!
 //! Colors and sizes come from [`EditorStyle`]; [`EditorStyle::from_theme`]
 //! derives them from the active gpui-component theme, and
@@ -351,9 +355,12 @@
 //!   [`Document::to_markdown`].
 //! - **Undo is exact:** undoing every edit gives back the loaded text byte
 //!   for byte.
-//! - An empty paragraph between blocks is written as `&#32;` (Markdown has
-//!   no empty paragraph), and an edited hard-wrapped paragraph is written on
-//!   one line.
+//! - **Empty paragraphs are not written:** Markdown has none, and in the
+//!   editor they are only places to type. The blocks around one are written
+//!   as neighbours, so two lists separated only by an empty paragraph read
+//!   back as one list. Adding an empty paragraph still makes the editor
+//!   [dirty](MarkdownEditor::is_dirty).
+//! - An edited hard-wrapped paragraph is written on one line.
 //!
 //! # Headless use
 //!
@@ -375,7 +382,9 @@
 //! - Accessibility: the document, blocks and popups are AccessKit nodes with
 //!   roles, but the caret and the selected text are not reported.
 //! - Folding and block drag work on top-level blocks only.
-//! - Extensions add marks, not inline nodes or block renderers.
+//! - Extensions contribute marks only (parser, serializer, `mark_style`,
+//!   `input_rule`, `click`, `slash_items`); they cannot add their own
+//!   inline nodes or block renderers.
 //! - Up and Down skip rules and images (Left and Right select them).
 //! - Enter in a quote starts a new quote paragraph rather than leaving it.
 //! - Input methods are tested in simulation; dead keys, Compose and ibus

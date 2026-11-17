@@ -3,7 +3,8 @@
 //! After every step the model invariants hold. Undoing everything gives back
 //! the original model and byte-identical Markdown, redoing it all gives back
 //! the edited state, and the normalized Markdown of the edited document is
-//! stable under parsing.
+//! stable under parsing. Empty paragraphs are the only part of the model
+//! the Markdown leaves out.
 
 use std::time::{Duration, Instant};
 
@@ -323,10 +324,25 @@ fn writer_safe(blocks: &[Block]) -> bool {
     })
 }
 
-fn drop_empty_paragraphs(blocks: &mut Vec<Block>) {
+/// Leaves out what the stability check does not cover: raw blocks (their
+/// text is source the user edits as such) and paragraphs of nothing but
+/// whitespace. Empty paragraphs stay: the serializer leaves them out.
+fn drop_unchecked(blocks: &mut Vec<Block>) {
     blocks.retain(|b| {
         !(b.kind == BlockKind::Raw
-            || b.kind == BlockKind::Paragraph && b.content.text.trim().is_empty())
+            || b.kind == BlockKind::Paragraph
+                && !b.content.text.is_empty()
+                && b.content.text.trim().is_empty())
+    });
+    for block in blocks {
+        drop_unchecked(&mut block.children);
+    }
+}
+
+/// Removes the empty paragraphs, which exist only in the editor.
+fn drop_empty_paragraphs(blocks: &mut Vec<Block>) {
+    blocks.retain(|b| {
+        !(b.kind == BlockKind::Paragraph && b.content.text.is_empty() && b.children.is_empty())
     });
     for block in blocks {
         drop_empty_paragraphs(&mut block.children);
@@ -362,10 +378,19 @@ proptest! {
         let edited = state.doc.blocks.clone();
         let edited_markdown = state.markdown();
 
-        // Blank paragraphs have no Markdown form, and the text of a raw block
-        // is source the user edits as such; leave both out.
+        // The file is the model without its empty paragraphs: leaving them
+        // out of the model changes neither the saved nor the normalized text.
+        let mut without_empty = state.doc.clone();
+        drop_empty_paragraphs(&mut without_empty.blocks);
+        // (A document of nothing but empty paragraphs keeps its final line
+        // break, an empty one has none.)
+        if !without_empty.blocks.is_empty() {
+            prop_assert_eq!(&without_empty.to_markdown(), &edited_markdown);
+            prop_assert_eq!(&without_empty.normalized(), &state.doc.normalized());
+        }
+
         let mut content = state.doc.clone();
-        drop_empty_paragraphs(&mut content.blocks);
+        drop_unchecked(&mut content.blocks);
         if writer_safe(&content.blocks) {
             let normalized = content.normalized();
             let again = Document::parse_with(&normalized, extensions()).normalized();

@@ -2317,7 +2317,7 @@ dependencies = [
 
 [[package]]
 name = "gpui-markdown-editor"
-version = "0.0.4"
+version = "0.1.0"
 dependencies = [
  "criterion",
  "futures",

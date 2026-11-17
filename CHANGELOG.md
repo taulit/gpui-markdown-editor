@@ -3,7 +3,35 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
-## [Unreleased]
+## [0.1.0]
+
+Release preparation (phase E5).
+
+- New option `EditorOptions::input_rules: bool` (default `true`). With
+  `false`, typed Markdown such as `# ` or `**x**` stays literal text,
+  including the input rules of extensions. The slash menu and the `[[`/`#`
+  completions are not affected; they keep their own switches
+  (`UiParts::slash_menu`, `EditorOptions::completions`).
+  `EditorOptions` is not `#[non_exhaustive]`, so a struct literal that
+  lists every field without `..Default::default()` no longer compiles;
+  literals ending in `..Default::default()` (as documented) are
+  unaffected.
+- **File format change** relative to 0.0.3 and 0.0.4: empty paragraphs
+  are no longer written. They exist only as places to type; the
+  serializer leaves them out everywhere (between blocks, inside quotes
+  and list items), where 0.0.3/0.0.4 wrote `&#32;` on its own line. The
+  blocks around a dropped paragraph are written as neighbours: `- a`,
+  an empty paragraph, `- c` (Enter in an empty middle item) is saved as
+  `- a\n- c` and reads back as one list. The parser no longer treats a
+  lone `&#32;` specially: in files written by 0.0.3/0.0.4 it reads as a
+  paragraph containing one space, as CommonMark defines. Unedited files
+  still round-trip byte for byte, and undoing every edit restores them.
+  Adding only an empty paragraph makes the editor dirty (`is_dirty`)
+  although `markdown()` is unchanged.
+- Extensions contribute marks only (parser, serializer, `mark_style`,
+  `input_rule`, `click`, `slash_items`); their own inline nodes and block
+  renderers are not supported. Documented on `Extension`, in the crate
+  guide and the README.
 
 Benchmarks, motion and documentation (phase E4, part 1).
 

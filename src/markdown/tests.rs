@@ -437,3 +437,39 @@ fn loose_task_items() {
     );
     assert_eq!(document.blocks[1].children.len(), 1);
 }
+
+#[test]
+fn empty_paragraphs_are_not_written() {
+    // Between blocks of any kind, and inside a quote.
+    let mut document = parse("a\n\n# b\n");
+    insert(&mut document, 1, BlockKind::Paragraph, "");
+    insert(&mut document, 0, BlockKind::Paragraph, "");
+    insert(&mut document, 4, BlockKind::Paragraph, "");
+    assert_eq!(document.to_markdown(), "a\n\n# b\n");
+    assert_eq!(document.normalized(), "a\n\n# b\n");
+
+    // Two lists around an empty paragraph become one list.
+    let mut document = parse("- a\n\nx\n\n- c\n");
+    document.blocks[1].content = Inline::default();
+    document.blocks[1].dirty = true;
+    let markdown = document.to_markdown();
+    assert_eq!(markdown, "- a\n- c\n");
+    assert_eq!(parse(&markdown).blocks.len(), 2);
+
+    let mut document = parse("> q\n");
+    let child = new_block(&mut document, BlockKind::Paragraph, "");
+    document.blocks[0].children.push(child);
+    document.blocks[0].dirty = true;
+    assert_eq!(document.to_markdown(), "> q\n");
+}
+
+#[test]
+fn a_lone_space_entity_is_ordinary_text() {
+    // Files written by 0.0.3 and 0.0.4 kept empty paragraphs as `&#32;`.
+    let source = "a\n\n&#32;\n\nb\n";
+    let document = parse(source);
+    assert_eq!(document.blocks.len(), 3);
+    assert_eq!(document.blocks[1].kind, BlockKind::Paragraph);
+    assert_eq!(document.blocks[1].content.text, " ");
+    assert_eq!(document.to_markdown(), source);
+}

@@ -53,6 +53,7 @@ pub struct EditorOptions {
     pub completions: Option<Arc<dyn Fn(CompletionKind, &str) -> Vec<Completion>>>, // für [[ und #
     pub slash_items: Vec<SlashItem>,                       // zusätzliche Einträge des Hosts
     pub ui: UiParts,                                       // format_bar, slash_menu, find_bar, link_popover an/aus
+    pub input_rules: bool,                                 // Eingaberegeln aus §6 an/aus, auch die der Erweiterungen (Standard an)
 }
 ```
 
@@ -76,13 +77,14 @@ pub enum Mark { Bold, Italic, Underline /* <u> */, Strike, Code, Highlight /* ==
   - Leerzeilen und Abstände zwischen unveränderten Blöcken bleiben erhalten.
 - **Erweiterungen** (Trait `Extension`):
   - eigene Inline-Knoten und Marks mit Parser, Serializer, Renderer und Eingaberegeln
+    - *Ab 0.1.0 nicht umgesetzt:* eigene Inline-Knoten und Block-Renderer. Erweiterungen liefern nur Marks (Parser, Serializer, `mark_style`, `input_rule`, `click`, `slash_items`).
   - mitgeliefert, aber optional: `WikiLink` (`[[Titel]]`), `Tag` (`#tag`), `Highlight`
   - Sheaf hängt dort Autovervollständigung an (Callback für Vorschläge)
 
 ## 3. Transaktionen und Verlauf
 
 - Alle Änderungen laufen über `Transaction` mit Schritten (`ReplaceText`, `SetBlockKind`, `ToggleMark`, `InsertBlock`, `RemoveBlock`, `MoveBlock`, `TableOp`, `SetAttr`).
-- Jeder Schritt ist invertierbar. Undo/Redo gruppiert Tippen innerhalb von 500 ms und bis zur nächsten Wortgrenze.
+- **Ereignis** `Changed` (ohne Daten, siehe §1a): der Host liest `markdown()` und `is_dirty()` und speichert entprellt (Sheaf).
 - **Ereignis** `Changed { tx, doc_version }`. Der Host (Sheaf) speichert entprellt.
 - **API für Befehle** (öffentlich, mit Tastenkürzeln belegbar):
   - `toggle_mark(Mark)`, `set_block(BlockKind)`, `indent()`/`outdent()`
@@ -126,7 +128,7 @@ pub enum Mark { Bold, Italic, Underline /* <u> */, Strike, Code, Highlight /* ==
 ## 6. Eingabe
 
 - **IME:** über `EntityInputHandler` (marked text, Vorschlagsfenster an Cursorposition). Pflichttest mit Akzent-Tasten (´ + e), Compose und ibus-pinyin *(prüfen: bekannter Panic-Bug in GPUI beim erneuten Tippen nach gelöschtem IME-Text, Workaround dokumentieren)*.
-- **Eingaberegeln** (wie Tiptap, abschaltbar):
+- **Eingaberegeln** (wie Tiptap, abschaltbar mit `EditorOptions::input_rules`; Slash-Menü und `[[`/`#`-Vervollständigung zählen nicht dazu, sie haben eigene Schalter in `UiParts` und `completions`):
 
   | Eingabe | Wirkung |
   |---|---|
