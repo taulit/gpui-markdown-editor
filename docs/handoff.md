@@ -15,14 +15,15 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-Nothing. E0–E3 are merged to `main` (PRs 1, 3, 4, 5; tag `v0.0.4`). E4 is complete on `phase/e4-release`
-(rebased on `main`, final bug review done and its two findings fixed), PR open against `main`, waiting for the user.
+Nothing. E0–E4 are merged to `main` (PRs 1, 3, 4, 5, 6). The release branch `phase/e5-release-0.1.0` applies the
+user's four decisions (`EditorOptions::input_rules`, plain `Changed` in the plan, extension limit documented,
+empty paragraphs not written) and bumps to 0.1.0; tag `v0.1.0`, PR open against `main`, waiting for the user.
 
 ## Next
 
-1. Apply the user's answers to the four pending decisions in `docs/STATUS.md`.
-2. Then bump to 0.1.0, changelog, tag `v0.1.0` (see `docs/release-checklist.md`). No crates.io publishing
-   (the user does that).
+1. After the merge: the manual checks in `docs/release-checklist.md` on a real desktop (IME, drag and drop,
+   HiDPI, screen reader). They were never done; everything was verified with tests and offscreen screenshots.
+2. crates.io publishing is the user's own step.
 3. Known performance edge: opening 1 MB takes about 31 ms on a quiet machine (budget 50 ms) but 57–66 ms under
    heavy load; parsing is about 35 ms of it.
 

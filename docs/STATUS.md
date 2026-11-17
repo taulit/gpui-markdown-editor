@@ -24,6 +24,10 @@ Read by other sessions. Keep terse.
   (`mark_style`, `input_rule`, `click`, `slash_items`), `completions`, accessibility roles. `MetaChanged` is emitted.
   Signatures unchanged; additions are listed in `CHANGELOG.md`. Prefer this tag.
 
+- `v0.1.0` (branch `phase/e5-release-0.1.0`): first complete release. Against `v0.0.4`: new
+  `EditorOptions::input_rules` (breaks struct literals without `..Default::default()`), empty paragraphs are no
+  longer written (`&#32;` is gone), popup and checkbox motion, benchmarks, crate guide. Prefer this tag.
+
 ## Done
 
 - E0: repo, toolchain, CI, versions pinned, assumptions verified (`docs/verified.md`).
