@@ -94,6 +94,7 @@
 //!   emitted.
 
 pub mod command;
+mod edit;
 pub mod editor;
 pub mod event;
 pub mod extension;
@@ -103,6 +104,7 @@ pub mod meta;
 pub mod model;
 pub mod options;
 pub mod style;
+mod view;
 
 pub use command::Command;
 pub use editor::MarkdownEditor;
