@@ -8,6 +8,7 @@ mod clipboard;
 mod editing;
 mod ime;
 mod mouse;
+mod table;
 mod timing;
 
 use std::cell::RefCell;

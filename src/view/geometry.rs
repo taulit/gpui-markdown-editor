@@ -35,6 +35,9 @@ struct LineRef {
     node: usize,
     line: usize,
     rect: Bounds<Pixels>,
+    /// The horizontal extent that counts as this line for hit testing: the
+    /// line itself, or the whole cell for lines in table cells.
+    span: (Pixels, Pixels),
 }
 
 impl<'a> ViewQuery<'a> {
@@ -65,6 +68,7 @@ impl<'a> ViewQuery<'a> {
         let top = self.state.top_of(ix);
         let mut out = Vec::new();
         for (n, node) in layout.nodes.iter().enumerate() {
+            let cell = cell_rect(&layout, node.id);
             for line in 0..node.text.lines.len() {
                 let r = node.line_rect(line);
                 out.push(LineRef {
@@ -72,6 +76,7 @@ impl<'a> ViewQuery<'a> {
                     node: n,
                     line,
                     rect: r + point(Pixels::ZERO, top),
+                    span: cell.map_or((r.left(), r.right()), |c| (c.left(), c.right())),
                 });
             }
         }
@@ -94,6 +99,29 @@ impl<'a> ViewQuery<'a> {
         let d = self.state.doc_point(p);
         let ix = self.state.slot_at_y(d.y)?;
         let n = self.state.slots.len();
+        // Inside a table cell the cell wins, whatever is closer elsewhere.
+        if let Some(layout) = self.layout(ix) {
+            let local = d - point(Pixels::ZERO, self.state.top_of(ix));
+            let hit = layout
+                .rects
+                .iter()
+                .find(|(_, kind, r)| *kind == RectKind::Cell && r.contains(&local));
+            if let Some((id, _, _)) = hit {
+                let id = *id;
+                let best = self
+                    .lines_of(ix)
+                    .into_iter()
+                    .filter(|l| layout.nodes[l.node].id == id)
+                    .min_by(|a, b| {
+                        axis_distance(d.y, a.rect.top(), a.rect.bottom())
+                            .partial_cmp(&axis_distance(d.y, b.rect.top(), b.rect.bottom()))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                if let Some(l) = best {
+                    return self.pos_on_line(l, d.x);
+                }
+            }
+        }
         // Blocks without text (rules, images) send the search to neighbours.
         for dist in 0..n {
             let mut best: Option<(Pixels, Pixels, LineRef)> = None;
@@ -106,7 +134,7 @@ impl<'a> ViewQuery<'a> {
                 }
                 for l in self.lines_of(j) {
                     let dy = axis_distance(d.y, l.rect.top(), l.rect.bottom());
-                    let dx = axis_distance(d.x, l.rect.left(), l.rect.right());
+                    let dx = axis_distance(d.x, l.span.0, l.span.1);
                     if best.is_none_or(|(by, bx, _)| (dy, dx) < (by, bx)) {
                         best = Some((dy, dx, l));
                     }
@@ -234,11 +262,15 @@ impl<'a> ViewQuery<'a> {
             .text
             .line_for_offset(floor_boundary(&node.text.text, pos.offset));
         let top = self.state.top_of(ix);
+        let r = node.line_rect(line);
+        let span =
+            cell_rect(&layout, node.id).map_or((r.left(), r.right()), |c| (c.left(), c.right()));
         Some(LineRef {
             slot: ix,
             node: n,
             line,
-            rect: node.line_rect(line) + point(Pixels::ZERO, top),
+            rect: r + point(Pixels::ZERO, top),
+            span,
         })
     }
 
@@ -278,8 +310,8 @@ impl<'a> ViewQuery<'a> {
                         if (lt - bt).abs() > eps {
                             if down { lt < bt } else { lt > bt }
                         } else {
-                            axis_distance(x, l.rect.left(), l.rect.right())
-                                < axis_distance(x, b.rect.left(), b.rect.right())
+                            axis_distance(x, l.span.0, l.span.1)
+                                < axis_distance(x, b.span.0, b.span.1)
                         }
                     }
                 };
@@ -450,6 +482,15 @@ impl<'a> ViewQuery<'a> {
         let target = point(goal_x, target_y);
         self.position_at(target)
     }
+}
+
+/// The rectangle of the table cell `id`, if it is one.
+fn cell_rect(layout: &BlockLayout, id: BlockId) -> Option<Bounds<Pixels>> {
+    layout
+        .rects
+        .iter()
+        .find(|(r, kind, _)| *r == id && *kind == RectKind::Cell)
+        .map(|(_, _, b)| *b)
 }
 
 fn axis_distance(v: Pixels, lo: Pixels, hi: Pixels) -> Pixels {

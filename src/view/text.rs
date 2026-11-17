@@ -217,8 +217,22 @@ impl TextLayout {
             return 0;
         };
         let layout = &seg.line.unwrapped_layout;
-        let mut offset =
-            (seg.start + layout.closest_index_for_x(x + l.start_x)).clamp(l.start, l.end);
+        let lx = x + l.start_x;
+        let mut ix = layout.closest_index_for_x(lx);
+        // gpui answers the end for any x past the start of the last glyph;
+        // the left half of that glyph belongs before it.
+        if ix == layout.len && ix > 0 {
+            let seg_text = self
+                .text
+                .get(seg.start..seg.start + layout.len)
+                .unwrap_or("");
+            let last = prev_boundary(seg_text, layout.len);
+            let mid = (layout.x_for_index(last) + layout.width) / 2.;
+            if lx < mid {
+                ix = last;
+            }
+        }
+        let mut offset = (seg.start + ix).clamp(l.start, l.end);
         let wrapped = self
             .lines
             .get(line + 1)
