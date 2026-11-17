@@ -83,7 +83,7 @@ pub enum Mark { Bold, Italic, Underline /* <u> */, Strike, Code, Highlight /* ==
 ## 3. Transaktionen und Verlauf
 
 - Alle Änderungen laufen über `Transaction` mit Schritten (`ReplaceText`, `SetBlockKind`, `ToggleMark`, `InsertBlock`, `RemoveBlock`, `MoveBlock`, `TableOp`, `SetAttr`).
-- Jeder Schritt ist invertierbar. Undo/Redo gruppiert Tippen innerhalb von 500 ms und bis zur nächsten Wortgrenze.
+- **Ereignis** `Changed` (ohne Daten, siehe §1a): der Host liest `markdown()` und `is_dirty()` und speichert entprellt (Sheaf).
 - **Ereignis** `Changed { tx, doc_version }`. Der Host (Sheaf) speichert entprellt.
 - **API für Befehle** (öffentlich, mit Tastenkürzeln belegbar):
   - `toggle_mark(Mark)`, `set_block(BlockKind)`, `indent()`/`outdent()`
