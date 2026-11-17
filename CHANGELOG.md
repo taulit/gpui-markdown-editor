@@ -5,9 +5,32 @@ API changes between tags are listed here because downstream (Sheaf) pins tags.
 
 ## [Unreleased]
 
-Table editing and images (phase E3, part 1).
+Tables, images and the editor UI (phase E3).
 
-API changes:
+API changes (part 2, editor UI):
+
+- `Extension` has four new default methods: `mark_style` (new types
+  `MarkStyle` and `MarkColor`), `input_rule`, `click` and `slash_items`
+  (new type `extension::SlashEntry`). The renderer and Ctrl/Cmd+click no
+  longer special-case `WikiLink` and `Tag`; the bundled extensions
+  implement the hooks.
+- New `markdown::html_to_markdown` (feature `paste-html`). GPUI 0.3.12
+  offers no HTML clipboard format, so the editor's paste never sees HTML;
+  hosts that read HTML themselves insert the result with
+  `Command::InsertMarkdown`.
+- `Command::OpenFind` and `Command::FoldHeading` work.
+  `EditorOptions::completions`, `EditorOptions::slash_items` and every
+  switch of `UiParts` are honored. `DocMeta::folded_headings` is written
+  (with `MetaChanged`) and restored by `set_meta` and `set_markdown`.
+- New key bindings in the context `MarkdownEditor`: Ctrl/Cmd+F (find),
+  F3 and Shift+F3 (next/previous match), Ctrl/Cmd+. (fold the heading at
+  the caret). Ctrl/Cmd+K opens the link popover; only without
+  `UiParts::link_popover` does it still link to the clipboard URL. The
+  popups have their own key contexts `MarkdownEditorFind` and
+  `MarkdownEditorPrompt`.
+- Without the cargo feature `ui` all UI parts are off.
+
+API changes (part 1, tables and images):
 
 - Escape is bound in the key context `MarkdownEditor` (action `Cancel`). It
   closes an open table menu and is passed on to the host otherwise.
@@ -40,6 +63,47 @@ What works:
   handles; dragging one stores the width as `![alt|width](src)`.
 - Pasting image data calls `on_image` and inserts the returned source as an
   image block.
+
+What works (part 2):
+
+- Find bar (Ctrl/Cmd+F): query field, "3 of 12", previous/next with Enter,
+  Shift+Enter, F3, Shift+F3 and buttons, case toggle (Alt+C). Matches are
+  painted like host highlights, the current one stronger, and scrolled into
+  view; a folded section with the current match is unfolded. Escape
+  selects the current match and returns the focus. Text selected in one
+  block becomes the query. No replace: the plan does not ask for it.
+- Slash menu: `/` at the start of a line or after whitespace lists text,
+  headings 1 to 3, bullet, numbered and check lists, quote, code block,
+  divider, table and image, then extension and host entries, filtered by
+  the typed text. Up/Down, Enter/Tab, Escape and click; the `/query` is
+  removed first, so undo brings it back.
+- Format bar: floats at the bottom center as in the Sheaf prototype and
+  adapts to the selection (insert tools at a caret, marks and link for
+  text, list/indent/quote over several blocks, row and column tools in a
+  table); mark buttons reflect the selection; hidden while unfocused,
+  while the mouse selects and in code blocks. "Aa" opens the style popover.
+- Link popover (Ctrl/Cmd+K, the link button): URL field prefilled with
+  the current link or a clipboard URL; Enter applies in one undo step,
+  Escape cancels, Remove (or an empty field) unlinks. With the caret in a
+  link a bubble offers Open, Edit and Remove. The same popover asks for
+  the source of an image from the slash menu or the format bar.
+- Completions: `[[` and `#` open the host's suggestions from
+  `EditorOptions::completions`.
+- Folding: a chevron left of a top-level heading (on hover and while
+  folded) or Ctrl/Cmd+. folds everything up to the next heading of the
+  same or a higher level. Folded blocks are not laid out and the caret
+  skips them.
+- Block drag: a handle left of the hovered block moves it (with its
+  children, a folded heading with its section) to the insertion line, in
+  one undo step. Image files dropped onto the editor go through
+  `on_image`.
+- Extensions: `[[Note]]` and `#tag` are marked while typing (one undo
+  step), "Link to note" and "Tag" in the slash menu.
+- Accessibility: the document is an AccessKit node with role Document;
+  visible blocks are synthetic leaves with their role (heading level,
+  checkbox state with the Click action) and text; popups carry roles and
+  labels. The table menu works with the keyboard. GPUI's synthetic nodes
+  are leaves, so caret and selection are not reported as text positions.
 
 Fixed:
 

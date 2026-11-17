@@ -77,7 +77,7 @@
 //!
 //! # Status
 //!
-//! Unreleased, phase E3 part 1: the document is edited in place (WYSIWYG).
+//! Unreleased, phase E3: the document is edited in place (WYSIWYG).
 //! What works:
 //!
 //! - **Typing** with the Markdown input rules (`# `, `- `, `1. `, `[] `,
@@ -125,15 +125,31 @@
 //!   alt text stays while loading and on failure. A selected image has
 //!   resize handles that store the width as `![alt|400](src)`. Pasted image
 //!   data goes through [`EditorOptions::on_image`].
-//! - All [`Command`]s except `FoldHeading` and `OpenFind`, which do nothing
-//!   yet. [`highlight`](MarkdownEditor::highlight),
+//! - **UI parts** ([`UiParts`]): the format bar at the bottom adapts to the
+//!   selection and opens the style popover; the slash menu (`/`) inserts
+//!   block types, extension and host entries; the link popover edits links
+//!   and a bubble at a link offers open, edit, remove; the find bar (Ctrl+F)
+//!   counts and steps through matches; `[[` and `#` open the host's
+//!   [completions](EditorOptions::completions). All work with the keyboard.
+//! - **Folding**: the chevron left of a heading (or Ctrl+.) folds its
+//!   section; folded blocks are not laid out and the caret skips them. The
+//!   state is [`DocMeta::folded_headings`].
+//! - **Drag and drop**: a handle left of a block moves it with its
+//!   children; dropped image files go through [`EditorOptions::on_image`].
+//!   [`markdown::html_to_markdown`] converts rich text for hosts that read
+//!   HTML from the clipboard (GPUI has no HTML clipboard format).
+//! - **Extensions** style their marks, add input rules, click events and
+//!   slash entries, see [`Extension`].
+//! - **Accessibility**: the document and its visible blocks are AccessKit
+//!   nodes with roles (heading levels, checkbox states); popups have roles
+//!   and labels. The caret and selected text are not reported (GPUI's
+//!   synthetic nodes are leaves).
+//! - All [`Command`]s. [`highlight`](MarkdownEditor::highlight),
 //!   [`scroll_to`](MarkdownEditor::scroll_to), [`EditorStyle`],
 //!   `first_line_is_title` and `max_width` are applied.
 //!
-//! Not yet: the UI parts of [`UiParts`] (format bar, slash menu, find bar,
-//! link popover), folding, HTML paste, dragging blocks, accessibility.
-//! [`EditorOptions::completions`] and [`EditorOptions::slash_items`] are
-//! never called, and [`EditorEvent::AttachmentClicked`] is never emitted.
+//! Not yet: attachments ([`EditorEvent::AttachmentClicked`] is never
+//! emitted).
 
 pub mod command;
 mod edit;
