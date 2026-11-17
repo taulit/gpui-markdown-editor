@@ -58,10 +58,14 @@ impl EditorState {
                 } else {
                     text
                 };
-                let marks = match pending {
+                let mut marks = match pending {
                     Some(marks) => marks,
                     None => inline_ops::marks_at(tr.inline(pos.block)?, pos.offset),
                 };
+                if text.contains('\n') {
+                    // Inline code cannot hold a line break.
+                    marks.retain(|mark| *mark != Mark::Code);
+                }
                 let offset = tr.insert_typed(pos, &text, &marks)?;
                 Ok(Selection::caret(TextPos {
                     block: pos.block,
@@ -525,6 +529,26 @@ impl EditorState {
 
 /// Inserts `lines` at `pos`: see [`EditorState::insert_inline_lines`].
 pub(crate) fn insert_lines(tr: &mut Tr<'_>, pos: TextPos, lines: Vec<Inline>) -> EditResult<Selection> {
+    if tr.is_cell(pos.block) || tr.is_literal(pos.block) {
+        // One line in a cell, the text as is in code.
+        let separator = if tr.is_cell(pos.block) { " " } else { "\n" };
+        let mut joined = Inline::default();
+        for (index, line) in lines.iter().enumerate() {
+            if index > 0 {
+                joined = inline_ops::concat(&joined, &Inline::plain(separator));
+            }
+            joined = inline_ops::concat(&joined, line);
+        }
+        if tr.is_literal(pos.block) {
+            joined.marks.clear();
+        }
+        let len = joined.text.len();
+        tr.replace(pos.block, pos.offset..pos.offset, joined)?;
+        return Ok(Selection::caret(TextPos {
+            block: pos.block,
+            offset: pos.offset + len,
+        }));
+    }
     let mut lines = lines.into_iter();
     let Some(first) = lines.next() else {
         return Ok(Selection::caret(pos));

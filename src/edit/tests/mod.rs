@@ -11,7 +11,7 @@ mod history;
 mod ime;
 mod marks;
 mod order_perf;
-mod prop;
+mod properties;
 mod rules;
 mod text;
 

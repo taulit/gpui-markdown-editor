@@ -82,6 +82,11 @@ pub(crate) fn replace(inline: &mut Inline, range: Range<usize>, insert: &Inline)
     let mut marks = Vec::with_capacity(inline.marks.len() + insert.marks.len());
     for span in inline.marks.drain(..) {
         let Range { start: a, end: b } = span.range;
+        // Raw source that is cut or typed into is no longer the source it
+        // was: what is left of it becomes plain text.
+        if matches!(span.mark, Mark::Raw) && b > start && a < end {
+            continue;
+        }
         let range = if b <= start {
             a..b
         } else if a >= end {

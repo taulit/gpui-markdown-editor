@@ -11,7 +11,7 @@ use crate::edit::ops::{Abort, EditResult};
 use crate::edit::order::{self, Loc};
 use crate::edit::state::EditorState;
 use crate::edit::transaction::Tr;
-use crate::model::{Block, BlockId, BlockKind, Document, TextPos};
+use crate::model::{Block, BlockId, BlockKind, Document, Inline, TextPos};
 
 impl EditorState {
     /// The selected text without formatting. Blocks are separated by line
@@ -115,6 +115,17 @@ impl EditorState {
                 Selection::Text { .. } => {
                     let (start, end) = range.ok_or(Abort::NotApplicable)?;
                     let pos = tr.delete_range(start, end)?;
+                    if tr.is_cell(pos.block) {
+                        let mut text = String::new();
+                        flatten(&blocks, &mut text);
+                        let text = text.trim().to_string();
+                        let len = text.len();
+                        tr.replace(pos.block, pos.offset..pos.offset, Inline::plain(text))?;
+                        return Ok(Selection::caret(TextPos {
+                            block: pos.block,
+                            offset: pos.offset + len,
+                        }));
+                    }
                     insert_blocks_at(tr, pos, blocks)
                 }
             }
