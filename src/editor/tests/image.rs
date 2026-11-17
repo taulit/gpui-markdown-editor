@@ -93,6 +93,17 @@ fn images_load_and_failures_keep_the_placeholder(cx: &mut TestAppContext) {
     std::fs::remove_dir_all(dir).ok();
 }
 
+#[cfg(unix)]
+#[gpui::test]
+fn device_paths_fail_fast_into_the_placeholder(cx: &mut TestAppContext) {
+    // Without `resolve_src` absolute paths load as they are: a device is
+    // refused instead of being read without end.
+    let (editor, cx) = open(cx, "![z](/dev/zero)\n\n![d](/tmp)\n");
+    settle(cx);
+    assert_eq!(image_state(&editor, cx, "/dev/zero"), "Failed");
+    assert_eq!(image_state(&editor, cx, "/tmp"), "Failed");
+}
+
 #[gpui::test]
 fn dragging_a_handle_resizes_the_image(cx: &mut TestAppContext) {
     let dir = fixture("resize");
