@@ -299,7 +299,7 @@ impl ViewState {
     ) -> Option<Arc<BlockLayout>> {
         let block = input.document.blocks().get(ix)?;
         let ctx = self.ctx(input.document, ix);
-        let key = block_key(block, ctx, self.width);
+        let key = block_key(block, ctx, self.width, input.column_widths);
         let frame = self.frame;
         if let Some(cached) = self.blocks.get_mut(&block.id)
             && cached.key == key
@@ -311,6 +311,7 @@ impl ViewState {
         }
         let mut env = LayoutEnv {
             style: input.style,
+            widths: input.column_widths,
             ts,
             texts: &mut self.texts,
             frame,

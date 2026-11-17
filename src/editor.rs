@@ -28,7 +28,7 @@ use crate::meta::DocMeta;
 use crate::model::{Block, BlockId, BlockKind, Document, TextPos, TextRange};
 use crate::options::EditorOptions;
 use crate::style::EditorStyle;
-use crate::view::{DocumentElement, DocumentView, LayoutInput};
+use crate::view::{ColumnWidths, DocumentElement, DocumentView, LayoutInput};
 
 /// How long the caret stays on and off while blinking.
 const BLINK_INTERVAL: Duration = Duration::from_millis(530);
@@ -89,6 +89,9 @@ pub struct MarkdownEditor {
     saved: u64,
     style: EditorStyle,
     meta: DocMeta,
+    /// The column widths of `meta`, by table id, so that they stay with
+    /// their table when tables before it are added or removed.
+    column_widths: ColumnWidths,
     highlights: Vec<TextRange>,
     /// Layout and scroll state of the rendered document.
     view: DocumentView,
@@ -101,6 +104,7 @@ pub struct MarkdownEditor {
     /// The mouse position while it is over the document.
     hover: Option<gpui::Point<Pixels>>,
     table_menu: Option<table::TableMenu>,
+    column_drag: Option<table::ColumnDrag>,
     _subscriptions: [Subscription; 2],
 }
 
@@ -140,6 +144,7 @@ impl MarkdownEditor {
             saved,
             style: EditorStyle::from_theme(cx),
             meta: DocMeta::default(),
+            column_widths: ColumnWidths::default(),
             highlights: Vec::new(),
             view: DocumentView::new(),
             goal_x: None,
@@ -149,6 +154,7 @@ impl MarkdownEditor {
             drag: None,
             hover: None,
             table_menu: None,
+            column_drag: None,
             _subscriptions: subscriptions,
         }
     }
@@ -170,6 +176,7 @@ impl MarkdownEditor {
         self.goal_x = None;
         self.drag = None;
         self.table_menu = None;
+        self.column_widths = widths_by_id(&self.state.doc, &self.meta);
         self.view.reset();
         cx.notify();
     }
@@ -301,8 +308,29 @@ impl MarkdownEditor {
     /// [`set_markdown`](Self::set_markdown). Does not emit
     /// [`EditorEvent::MetaChanged`].
     pub fn set_meta(&mut self, meta: DocMeta, cx: &mut Context<Self>) {
+        self.column_widths = widths_by_id(&self.state.doc, &meta);
         self.meta = meta;
         cx.notify();
+    }
+
+    /// Brings [`DocMeta::column_widths`] in line with the widths by table
+    /// id (tables may have moved, appeared or gone) and emits
+    /// [`EditorEvent::MetaChanged`] if that changed it.
+    pub(crate) fn sync_meta(&mut self, cx: &mut Context<Self>) {
+        let mut ordinal = 0;
+        let mut widths = std::collections::BTreeMap::new();
+        visit_tables(self.state.doc.blocks(), &mut |id, _| {
+            if let Some(w) = self.column_widths.get(&id) {
+                widths.insert(ordinal, w.clone());
+            }
+            ordinal += 1;
+        });
+        self.column_widths
+            .retain(|id, _| self.state.doc.block(*id).is_some());
+        if widths != self.meta.column_widths {
+            self.meta.column_widths = widths;
+            cx.emit(EditorEvent::MetaChanged);
+        }
     }
 
     /// The document model of the current content, for read access: outlines,
@@ -327,6 +355,7 @@ impl MarkdownEditor {
             style: &self.style,
             first_line_is_title: self.options.first_line_is_title,
             max_width: self.options.max_width,
+            column_widths: &self.column_widths,
         }
     }
 
@@ -361,6 +390,9 @@ impl MarkdownEditor {
         if changes.content || changes.selection {
             self.reveal_selection();
             self.restart_blink(cx);
+        }
+        if changes.structure && !self.column_widths.is_empty() {
+            self.sync_meta(cx);
         }
         if changes.content {
             self.view.invalidate(changes.blocks);
@@ -458,6 +490,32 @@ fn visit_texts(blocks: &[Block], f: &mut impl FnMut(BlockId, &str)) {
         }
         visit_texts(block.children(), f);
     }
+}
+
+/// Calls `f` with every table in document order, with its column count.
+fn visit_tables(blocks: &[Block], f: &mut impl FnMut(BlockId, usize)) {
+    for block in blocks {
+        if let BlockKind::Table(table) = block.kind() {
+            f(
+                block.id(),
+                table.rows.iter().map(Vec::len).max().unwrap_or(0),
+            );
+        }
+        visit_tables(block.children(), f);
+    }
+}
+
+/// The column widths of `meta` keyed by the ids of the tables of `doc`.
+fn widths_by_id(doc: &Document, meta: &DocMeta) -> ColumnWidths {
+    let mut out = ColumnWidths::default();
+    let mut ordinal = 0;
+    visit_tables(doc.blocks(), &mut |id, _| {
+        if let Some(w) = meta.column_widths.get(&ordinal) {
+            out.insert(id, w.clone());
+        }
+        ordinal += 1;
+    });
+    out
 }
 
 /// Finds the non-overlapping occurrences of `needle` in `text`, ignoring case.

@@ -8,7 +8,7 @@ use gpui::{
     Window, point, px,
 };
 
-use super::MarkdownEditor;
+use super::{MarkdownEditor, table};
 use crate::edit::Selection;
 use crate::event::EditorEvent;
 use crate::extensions::{Tag, WikiLink};
@@ -81,6 +81,21 @@ impl ViewSource for MarkdownEditor {
                 _ => None,
             }
             .unwrap_or(p);
+            if let Affordance::ColumnBorder { table, col } = a {
+                let start = q
+                    .table_geom(table)
+                    .map(|g| g.cols.iter().map(|(l, r)| (*r - *l).as_f32()).collect());
+                drop(q);
+                if let Some(start) = start {
+                    self.column_drag = Some(table::ColumnDrag {
+                        table,
+                        col,
+                        start_x: p.x,
+                        start,
+                    });
+                }
+                return;
+            }
             drop(q);
             if self.click_affordance(a, anchor, window, cx) {
                 return;
@@ -154,6 +169,12 @@ impl ViewSource for MarkdownEditor {
     }
 
     fn mouse_drag(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(drag) = &self.column_drag {
+            let widths = drag.widths_at(event.position.x);
+            self.column_widths.insert(drag.table, widths);
+            cx.notify();
+            return;
+        }
         let Some(drag) = &mut self.drag else {
             return;
         };
@@ -190,8 +211,11 @@ impl ViewSource for MarkdownEditor {
         }
     }
 
-    fn mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
+    fn mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.drag = None;
+        if self.column_drag.take().is_some() {
+            self.sync_meta(cx);
+        }
     }
 
     fn mouse_hover(

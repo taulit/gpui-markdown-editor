@@ -20,6 +20,34 @@ pub(super) struct TableMenu {
     pub position: Point<Pixels>,
 }
 
+/// A column border being dragged.
+#[derive(Clone, Debug)]
+pub(super) struct ColumnDrag {
+    pub table: BlockId,
+    pub col: usize,
+    /// Window x where the drag started.
+    pub start_x: Pixels,
+    /// The widths of all columns when the drag started.
+    pub start: Vec<f32>,
+}
+
+impl ColumnDrag {
+    /// The column widths with the mouse at `x`. All columns get a width so
+    /// that the others stay as they are.
+    pub fn widths_at(&self, x: Pixels) -> Vec<f32> {
+        let mut widths = self.start.clone();
+        if let Some(w) = widths.get_mut(self.col) {
+            *w = (*w + (x - self.start_x).as_f32())
+                .max(crate::view::MIN_COLUMN.as_f32())
+                .round();
+        }
+        widths
+    }
+}
+
+/// Width of a column inserted into a table with stored widths.
+const NEW_COLUMN_WIDTH: f32 = 120.;
+
 /// An entry of a row or column menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TableAction {
@@ -82,8 +110,15 @@ impl MarkdownEditor {
             Affordance::AddColumn { table } => {
                 let cols = self.table_size(table).1;
                 let row = self.caret_cell_in(table).map_or(0, |c| c.0);
-                if cols > 0 && self.caret_into_cell(table, row, cols - 1) {
-                    self.state.table_insert_column(true);
+                if cols > 0
+                    && self.caret_into_cell(table, row, cols - 1)
+                    && self.state.table_insert_column(true)
+                {
+                    self.adjust_widths(
+                        table,
+                        |w| w.insert(cols.min(w.len()), NEW_COLUMN_WIDTH),
+                        cx,
+                    );
                 }
             }
             Affordance::RowHandle { table, row } => {
@@ -129,8 +164,9 @@ impl MarkdownEditor {
             return;
         };
         let row = matches!(menu.handle, Affordance::RowHandle { .. });
+        let at = self.state.current_cell();
         let state = &mut self.state;
-        match action {
+        let done = match action {
             TableAction::InsertBefore if row => state.table_insert_row(false),
             TableAction::InsertAfter if row => state.table_insert_row(true),
             TableAction::MoveBefore if row => state.table_move_row(false),
@@ -143,7 +179,40 @@ impl MarkdownEditor {
             TableAction::Delete => state.table_remove_column(),
             TableAction::Align(align) => state.table_set_align(align),
         };
+        if let (true, false, Some(at)) = (done, row, at) {
+            let col = at.col;
+            self.adjust_widths(
+                at.table,
+                |w| match action {
+                    TableAction::InsertBefore if col <= w.len() => w.insert(col, NEW_COLUMN_WIDTH),
+                    TableAction::InsertAfter if col < w.len() => {
+                        w.insert(col + 1, NEW_COLUMN_WIDTH)
+                    }
+                    TableAction::MoveBefore if col > 0 && col < w.len() => w.swap(col - 1, col),
+                    TableAction::MoveAfter if col + 1 < w.len() => w.swap(col, col + 1),
+                    TableAction::Delete if col < w.len() => {
+                        w.remove(col);
+                    }
+                    _ => {}
+                },
+                cx,
+            );
+        }
         self.after_change(false, window, cx);
+    }
+
+    /// Changes the stored column widths of `table`, if it has any, after a
+    /// column was added, moved or removed.
+    fn adjust_widths(
+        &mut self,
+        table: BlockId,
+        f: impl FnOnce(&mut Vec<f32>),
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(widths) = self.column_widths.get_mut(&table) {
+            f(widths);
+            self.sync_meta(cx);
+        }
     }
 
     /// Closes the open menu, if any.

@@ -49,7 +49,7 @@ fn clicks_land_in_the_cell_under_the_mouse(cx: &mut TestAppContext) {
 
     // Right of the short text, near the border of the next cell.
     let r = bounds_of(&editor, cx, a);
-    cx.simulate_click(point(r.right() - px(3.), r.center().y), Modifiers::none());
+    cx.simulate_click(point(r.right() - px(8.), r.center().y), Modifiers::none());
     assert_eq!(caret(&editor, cx), "a‸");
 
     // Below the text of a cell in a taller row still hits that cell.
@@ -322,4 +322,97 @@ fn column_menu_aligns_moves_and_deletes(cx: &mut TestAppContext) {
         press(cx, "secondary-z");
     }
     assert_eq!(md(&editor, cx), GRID);
+}
+
+/// The rendered widths of the columns of the table at top-level block `ix`.
+fn column_widths(
+    editor: &Entity<MarkdownEditor>,
+    cx: &mut VisualTestContext,
+    ix: usize,
+) -> Vec<f32> {
+    let table = block(editor, cx, ix);
+    editor.update_in(cx, |editor, window, _| {
+        let ts = window.text_system().clone();
+        let view = editor.view.clone();
+        let g = view
+            .query(editor.layout_input(), &ts)
+            .table_geom(table)
+            .expect("table");
+        g.cols
+            .iter()
+            .map(|(l, r)| (*r - *l).as_f32().round())
+            .collect()
+    })
+}
+
+#[gpui::test]
+fn dragging_a_column_border_stores_the_width_in_the_meta(cx: &mut TestAppContext) {
+    let md_text = format!("intro\n\n{GRID}\n{TABLE}");
+    let (editor, cx) = open(cx, &md_text);
+    let events = record_events(&editor, cx);
+    let before = column_widths(&editor, cx, 2);
+    // The first border of the second table.
+    let table = block(&editor, cx, 2);
+    let g = editor.update_in(cx, |editor, window, _| {
+        let ts = window.text_system().clone();
+        let view = editor.view.clone();
+        view.query(editor.layout_input(), &ts)
+            .table_geom(table)
+            .unwrap()
+    });
+    let start = point(g.cols[0].1, g.bounds.center().y);
+    let end = point(start.x + px(60.), start.y);
+    cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+    cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::none());
+    cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+
+    let after = column_widths(&editor, cx, 2);
+    assert_eq!(after[0], before[0] + 60.);
+    assert_eq!(after[1], before[1]);
+    assert_eq!(count(&events, &EditorEvent::MetaChanged), 1);
+    assert_eq!(count(&events, &EditorEvent::Changed), 0);
+    let meta = editor.read_with(cx, |e, _| e.meta().clone());
+    assert_eq!(meta.column_widths.keys().copied().collect::<Vec<_>>(), [1]);
+    assert_eq!(meta.column_widths[&1][0], before[0] + 60.);
+    // The Markdown is untouched.
+    assert_eq!(md(&editor, cx), md_text);
+
+    // Removing the table above keeps the widths with their table.
+    let first = block(&editor, cx, 1);
+    editor.update(cx, |e, _| e.state.set_selection(Selection::Node(first)));
+    press(cx, "delete");
+    let meta = editor.read_with(cx, |e, _| e.meta().clone());
+    assert_eq!(meta.column_widths.keys().copied().collect::<Vec<_>>(), [0]);
+    assert_eq!(count(&events, &EditorEvent::MetaChanged), 2);
+
+    // Loading the document again with the stored meta restores the width.
+    let saved = editor.read_with(cx, |e, _| (e.markdown(), e.meta().clone()));
+    editor.update(cx, |e, cx| {
+        e.set_markdown("", cx);
+        e.set_meta(Default::default(), cx);
+        e.set_markdown(&saved.0, cx);
+        e.set_meta(saved.1.clone(), cx);
+    });
+    cx.run_until_parked();
+    let ix = editor.read_with(cx, |e, _| {
+        e.document()
+            .blocks()
+            .iter()
+            .position(|b| matches!(b.kind(), BlockKind::Table(_)))
+            .unwrap()
+    });
+    assert_eq!(column_widths(&editor, cx, ix), after);
+    assert_eq!(count(&events, &EditorEvent::MetaChanged), 2);
+}
+
+#[gpui::test]
+fn columns_size_to_their_content(cx: &mut TestAppContext) {
+    let long = "word ".repeat(80);
+    let md_text = format!("| a | {long} |\n|---|---|\n| b | c |\n");
+    let (editor, cx) = open(cx, &md_text);
+    let widths = column_widths(&editor, cx, 0);
+    // A short column stays narrow, a long one is capped and its text wraps
+    // within the content column.
+    assert_eq!(widths[0], 48.);
+    assert!(widths.iter().sum::<f32>() <= 604.5, "{widths:?}");
 }

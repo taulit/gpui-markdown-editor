@@ -58,8 +58,12 @@ fn layout_input<'a>(doc: &'a Document, style: &'a EditorStyle) -> LayoutInput<'a
         style,
         first_line_is_title: true,
         max_width: Some(px(700.)),
+        column_widths: &NO_WIDTHS,
     }
 }
+
+static NO_WIDTHS: std::sync::LazyLock<super::ColumnWidths> =
+    std::sync::LazyLock::new(Default::default);
 
 fn input<'a>(
     doc: &'a Document,

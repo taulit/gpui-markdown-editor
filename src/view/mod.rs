@@ -37,6 +37,7 @@ use crate::style::EditorStyle;
 
 pub(crate) use element::DocumentElement;
 pub(crate) use geometry::ViewQuery;
+pub(crate) use layout::MIN_COLUMN;
 #[cfg(test)]
 pub(crate) use state::ViewStats;
 pub(crate) use table_ui::Affordance;
@@ -50,7 +51,12 @@ pub(crate) struct LayoutInput<'a> {
     pub first_line_is_title: bool,
     /// Width of the content column including the side padding.
     pub max_width: Option<Pixels>,
+    /// Column widths set by the user, per table.
+    pub column_widths: &'a ColumnWidths,
 }
+
+/// Column widths in pixels per table, see [`DocMeta`](crate::DocMeta).
+pub(crate) type ColumnWidths = std::collections::HashMap<BlockId, Vec<f32>>;
 
 /// Everything the element paints.
 #[derive(Clone, Debug)]

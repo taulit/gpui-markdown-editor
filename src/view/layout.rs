@@ -188,6 +188,7 @@ impl TextCache {
 /// Everything block layout needs besides the block.
 pub(crate) struct LayoutEnv<'a> {
     pub style: &'a EditorStyle,
+    pub widths: &'a super::ColumnWidths,
     pub ts: &'a WindowTextSystem,
     pub texts: &'a mut TextCache,
     pub frame: u64,
@@ -607,6 +608,12 @@ fn links_of(inline: &Inline) -> Vec<MarkSpan> {
         .collect()
 }
 
+/// The narrowest a table column gets.
+pub(crate) const MIN_COLUMN: Pixels = px(48.);
+/// The widest a column gets from its content alone (unless the content
+/// column is very wide).
+const MAX_COLUMN: Pixels = px(320.);
+
 fn place_table(
     env: &mut LayoutEnv<'_>,
     id: BlockId,
@@ -638,17 +645,33 @@ fn place_table(
     };
     let spec_for = |row: usize| if row == 0 { &header } else { &body };
 
-    // Natural column widths, then scaled to fill the width like an HTML
-    // table with `width: 100%`.
-    let mut natural = vec![px(24.); cols];
+    // Columns are as wide as their content between a minimum and a
+    // maximum, or as the user dragged them. A table wider than the column
+    // is scaled down to fit and its text wraps.
+    let mut natural = vec![MIN_COLUMN; cols];
     for (r, row) in table.rows.iter().enumerate() {
         for (c, cell) in row.iter().enumerate() {
             let (t, _) = env.text(cell.id, &cell.content, spec_for(r), None);
             natural[c] = natural[c].max(t.width + pad_x * 2. + px(1.));
         }
     }
-    let total: Pixels = natural.iter().copied().sum();
-    let widths: Vec<Pixels> = natural.iter().map(|w| *w * (width / total)).collect();
+    let max_auto = MAX_COLUMN.max(width * 0.5);
+    let stored = env.widths.get(&id);
+    let mut widths: Vec<Pixels> = natural
+        .iter()
+        .enumerate()
+        .map(|(c, n)| match stored.and_then(|s| s.get(c)) {
+            Some(w) if w.is_finite() && *w > 0. => px(*w).max(MIN_COLUMN),
+            _ => (*n).min(max_auto),
+        })
+        .collect();
+    let total: Pixels = widths.iter().copied().sum();
+    if total > width {
+        for w in &mut widths {
+            *w = *w * (width / total);
+        }
+    }
+    let width: Pixels = widths.iter().copied().sum();
 
     let mut row_y = y;
     let mut row_tops = Vec::with_capacity(table.rows.len() + 1);
@@ -737,15 +760,20 @@ fn place_table(
 }
 
 /// Hash of everything that decides the layout of a top-level block.
-pub(crate) fn block_key(block: &Block, ctx: BlockCtx, width: Pixels) -> u64 {
+pub(crate) fn block_key(
+    block: &Block,
+    ctx: BlockCtx,
+    width: Pixels,
+    widths: &super::ColumnWidths,
+) -> u64 {
     let mut h = DefaultHasher::new();
     ctx.hash(&mut h);
     width.as_f32().to_bits().hash(&mut h);
-    hash_block(block, &mut h);
+    hash_block(block, &mut h, widths);
     h.finish()
 }
 
-fn hash_block(block: &Block, h: &mut DefaultHasher) {
+fn hash_block(block: &Block, h: &mut DefaultHasher, widths: &super::ColumnWidths) {
     block.id.hash(h);
     std::mem::discriminant(&block.kind).hash(h);
     match &block.kind {
@@ -758,6 +786,9 @@ fn hash_block(block: &Block, h: &mut DefaultHasher) {
             img.width.hash(h);
         }
         BlockKind::Table(t) => {
+            for w in widths.get(&block.id).into_iter().flatten() {
+                w.to_bits().hash(h);
+            }
             for a in &t.align {
                 std::mem::discriminant(a).hash(h);
             }
@@ -774,7 +805,7 @@ fn hash_block(block: &Block, h: &mut DefaultHasher) {
     hash_inline(&block.content, h);
     block.children.len().hash(h);
     for child in &block.children {
-        hash_block(child, h);
+        hash_block(child, h, widths);
     }
 }
 
