@@ -8,6 +8,8 @@
 //! Serializing copies the source of every block that was not edited and
 //! writes the others in a fixed style, see [`Document::to_markdown`].
 
+#[cfg(feature = "paste-html")]
+mod html;
 mod inline;
 mod parse;
 mod prefix;
@@ -17,6 +19,8 @@ mod write_inline;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "paste-html")]
+pub use html::html_to_markdown;
 pub(crate) use inline::normalize_marks;
 
 use crate::extension::Extensions;
