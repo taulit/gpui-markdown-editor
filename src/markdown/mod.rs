@@ -1,16 +1,32 @@
 //! Markdown parsing and lossless serialization for [`Document`].
+//!
+//! Parsing maps CommonMark with GFM tables, task lists and strikethrough to
+//! the document model. Whatever the model has no node for (HTML, footnotes,
+//! link reference definitions, front matter, math, callouts) is kept as raw
+//! source, so nothing is lost.
+//!
+//! Serializing copies the source of every block that was not edited and
+//! writes the others in a fixed style, see [`Document::to_markdown`].
 
-use std::sync::Arc;
+mod inline;
+mod parse;
+mod prefix;
+mod serialize;
+mod write_inline;
+
+#[cfg(test)]
+mod tests;
 
 use crate::extension::Extensions;
-use crate::model::{Block, BlockId, BlockKind, Document, Inline};
+use crate::model::{Block, BlockId, Document};
 
 impl Document {
     /// Parses Markdown (CommonMark with GFM tables, task lists and
     /// strikethrough) into a document.
     ///
     /// Parsing never fails. Constructs the editor does not model are kept as
-    /// [`BlockKind::Raw`] blocks.
+    /// [`BlockKind::Raw`](crate::BlockKind::Raw) blocks and
+    /// [`Mark::Raw`](crate::Mark::Raw) spans.
     pub fn parse(source: &str) -> Self {
         Self::parse_with(source, Extensions::default())
     }
@@ -18,41 +34,69 @@ impl Document {
     /// Like [`parse`](Self::parse), with custom inline syntax from
     /// `extensions`. The document keeps the extensions for serialization.
     pub fn parse_with(source: &str, extensions: Extensions) -> Self {
-        // Placeholder until the real parser lands: one raw block spanning the
-        // whole source keeps the round-trip lossless.
-        let mut blocks = Vec::new();
-        if !source.is_empty() {
-            blocks.push(Block {
-                id: BlockId(0),
-                kind: BlockKind::Raw,
-                content: Inline::plain(source),
-                children: Vec::new(),
-                origin: Some(0..source.len()),
-                dirty: false,
-            });
-        }
-        Self {
-            blocks,
-            source: Arc::from(source),
-            next_id: 1,
-            extensions,
-        }
+        parse::parse(source, extensions)
     }
 
     /// Serializes the document to Markdown.
     ///
-    /// Blocks that were not edited are copied from the original source, so an
-    /// unchanged document serializes byte-identically. Edited blocks are
-    /// written in a fixed style: `-` for bullets, `**` for bold, `*` for
-    /// italic, `- [ ]` for tasks and aligned table columns.
+    /// Blocks that were not edited are copied from the original source
+    /// together with the blank lines between them, so an unchanged document
+    /// serializes byte-identically. Edited and new blocks are written in a
+    /// fixed style:
+    ///
+    /// - ATX headings (`## Title`), `---` for rules, `> ` for quotes
+    /// - `-` for bullets, `1.` for numbered items, `- [ ]` and `- [x]` for
+    ///   tasks. An edited item of an existing list keeps the marker of that
+    ///   list.
+    /// - `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `==highlight==`,
+    ///   `<u>underline</u>`, `[text](url "title")`
+    /// - fenced code blocks, with a fence longer than any backtick run inside
+    /// - tables with padded, aligned columns
+    /// - one blank line between blocks, none between items of one list
+    ///
+    /// Characters are escaped only where they would be read as syntax. New
+    /// text uses the line ending of the source (`\n` or `\r\n`).
     pub fn to_markdown(&self) -> String {
-        if !self.is_modified() {
-            return self.source.to_string();
+        serialize::serialize(self, serialize::Mode::Mixed)
+    }
+
+    /// Serializes every block in the normalized style, ignoring the source.
+    #[doc(hidden)]
+    pub fn normalized(&self) -> String {
+        serialize::serialize(self, serialize::Mode::Normalized)
+    }
+
+    /// Marks the block with `id` as edited. Returns `false` if there is no
+    /// such block. Meant for tests of the serializer.
+    #[doc(hidden)]
+    pub fn mark_dirty(&mut self, id: BlockId) -> bool {
+        fn find(blocks: &mut [Block], id: BlockId) -> Option<&mut Block> {
+            blocks.iter_mut().find_map(|block| {
+                if block.id == id {
+                    Some(block)
+                } else {
+                    find(&mut block.children, id)
+                }
+            })
         }
-        self.blocks
-            .iter()
-            .map(|b| b.content.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n")
+        match find(&mut self.blocks, id) {
+            Some(block) => {
+                block.dirty = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Marks every block as edited.
+    #[allow(dead_code)] // used by tests until the editor applies transactions
+    pub(crate) fn mark_all_dirty(&mut self) {
+        fn mark(blocks: &mut [Block]) {
+            for block in blocks {
+                block.dirty = true;
+                mark(&mut block.children);
+            }
+        }
+        mark(&mut self.blocks);
     }
 }
