@@ -37,7 +37,8 @@ Read by other sessions. Keep terse.
 
 ## Open
 
-- E4: benchmarks, docs, README GIF, popup/checkbox motion, reviews, tag v0.1.0.
+- E4 (branch `phase/e4-release`, PR open): benchmarks (`docs/performance.md`), motion, crate guide, README,
+  release checklist. No API changes since `v0.0.4`. Tag `v0.1.0` follows after the decisions below.
 - Decisions pending with the user: `EditorOptions::input_rules` (plan says input rules can be switched off, no
   option exists), `Changed` payload (plan §3 vs §1a), custom inline nodes for extensions, `&#32;` for empty paragraphs.
 

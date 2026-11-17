@@ -15,17 +15,14 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-- E3 PR: https://github.com/taulit/gpui-markdown-editor/pull/5 (tag `v0.0.4`), CI green, waiting for the user to merge.
-- E4 on `phase/e4-release` (stacked on E3, pushed): benchmarks and `docs/performance.md`, popup and checkbox
-  motion, crate guide, README with GIF, `docs/release-checklist.md`, `examples/headless.rs`. Gate checks green
-  (284 lib tests). A cold bug review of the E4 diff is the last open step before its PR.
+Nothing. E0–E3 are merged to `main` (PRs 1, 3, 4, 5; tag `v0.0.4`). E4 is complete on `phase/e4-release`
+(rebased on `main`, final bug review done and its two findings fixed), PR open against `main`, waiting for the user.
 
 ## Next
 
-1. When PR 5 is merged: `git rebase --onto origin/main v0.0.4 phase/e4-release`, push, open the E4 PR against `main`
-   (do not open it earlier against the E3 branch; a stacked PR was merged into the wrong base once).
-2. Apply the user's answers to the four pending decisions in `docs/STATUS.md`, then bump to 0.1.0, changelog,
-   tag `v0.1.0` (see `docs/release-checklist.md`). No crates.io publishing (the user does that).
+1. Apply the user's answers to the four pending decisions in `docs/STATUS.md`.
+2. Then bump to 0.1.0, changelog, tag `v0.1.0` (see `docs/release-checklist.md`). No crates.io publishing
+   (the user does that).
 3. Known performance edge: opening 1 MB takes about 31 ms on a quiet machine (budget 50 ms) but 57–66 ms under
    heavy load; parsing is about 35 ms of it.
 
