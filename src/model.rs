@@ -4,10 +4,16 @@
 //! count open tasks in a file or to rewrite Markdown in a script:
 //!
 //! ```
-//! use gpui_markdown_editor::Document;
+//! use gpui_markdown_editor::{BlockKind, Document};
 //!
 //! let source = "# Groceries\n\n- [ ] Milk\n- [x] Bread\n";
 //! let doc = Document::parse(source);
+//! let open = doc
+//!     .blocks()
+//!     .iter()
+//!     .filter(|b| matches!(b.kind(), BlockKind::TaskItem { checked: false }))
+//!     .count();
+//! assert_eq!(open, 1);
 //! // Unchanged documents serialize byte-identically.
 //! assert_eq!(doc.to_markdown(), source);
 //! ```
@@ -48,10 +54,8 @@ pub struct Document {
     pub(crate) blocks: Vec<Block>,
     /// The text the document was parsed from. Clean blocks are copied from it.
     pub(crate) source: Arc<str>,
-    #[allow(dead_code)] // read by the parser, which replaces the placeholder next
     pub(crate) next_id: u64,
     /// The extensions the document was parsed with, used again when writing.
-    #[allow(dead_code)]
     pub(crate) extensions: Extensions,
 }
 
@@ -95,7 +99,7 @@ impl Document {
     }
 
     /// Allocates a fresh id for a new block or cell.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // used by tests until the editor applies transactions
     pub(crate) fn alloc_id(&mut self) -> BlockId {
         let id = BlockId(self.next_id);
         self.next_id += 1;
@@ -105,15 +109,22 @@ impl Document {
     /// `true` when top-level blocks were inserted, removed or reordered, so
     /// the origins no longer tile the source in order.
     fn structure_changed(&self) -> bool {
-        let mut cursor = 0;
+        let source = &*self.source;
+        // Blocks that are still neighbours have only whitespace between them.
+        // Anything else is the text of a block that was removed.
+        let blank = |from: usize, to: usize| {
+            source
+                .get(from..to)
+                .is_some_and(|gap| gap.bytes().all(|b| b.is_ascii_whitespace()))
+        };
+        let mut cursor = if source.starts_with('\u{feff}') { 3 } else { 0 };
         for block in &self.blocks {
             match &block.origin {
-                Some(origin) if origin.start >= cursor => cursor = origin.end,
+                Some(origin) if blank(cursor, origin.start) => cursor = origin.end,
                 _ => return true,
             }
         }
-        // Trailing text after the last block (only whitespace) is kept as is.
-        self.source[cursor..].chars().any(|c| !c.is_whitespace())
+        !blank(cursor, source.len())
     }
 }
 
@@ -281,7 +292,10 @@ impl Cell {
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Inline {
     pub(crate) text: String,
-    /// Sorted by start offset. Spans of equal marks never overlap or touch.
+    /// Sorted by start offset. Formatting spans of the same kind (bold,
+    /// italic, underline, strike, code, highlight) never overlap or touch.
+    /// Links, [`Mark::Raw`] and [`Mark::Custom`] spans are units of their
+    /// own: two links or two HTML tags in a row stay two spans.
     pub(crate) marks: Vec<MarkSpan>,
 }
 
