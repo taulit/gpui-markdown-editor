@@ -17,7 +17,8 @@
 //! - Hover the table for its "+" bars and row and column handles, drag a
 //!   column border to resize it; click the image and drag a handle to
 //!   resize it; paste an image or drop an image file to add one.
-//! - Type `[[Note]]` or `#tag ` to get a wiki link or a tag.
+//! - Type `[[` or `#` for suggestions of notes and tags, or type
+//!   `[[Note]]` or `#tag ` in full.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,7 +31,9 @@ use gpui::{
 use gpui_component::{ActiveTheme as _, Root};
 use gpui_markdown_editor::extensions::{Highlight, Tag, WikiLink};
 use gpui_markdown_editor::markdown::html_to_markdown;
-use gpui_markdown_editor::{Command, EditorEvent, EditorOptions, MarkdownEditor, SlashItem};
+use gpui_markdown_editor::{
+    Command, Completion, CompletionKind, EditorEvent, EditorOptions, MarkdownEditor, SlashItem,
+};
 
 const NOTE: &str = "\
 Weekend in the mountains
@@ -107,6 +110,17 @@ impl Notes {
             })),
             first_line_is_title: true,
             extensions: vec![Box::new(WikiLink), Box::new(Tag), Box::new(Highlight)],
+            completions: Some(Arc::new(|kind, query: &str| {
+                let all: &[&str] = match kind {
+                    CompletionKind::WikiLink => &["Packing list", "Recipes", "Trip budget"],
+                    _ => &["travel", "trip", "weekend"],
+                };
+                let query = query.to_lowercase();
+                all.iter()
+                    .filter(|s| s.to_lowercase().contains(&query))
+                    .map(|s| Completion::new(*s))
+                    .collect()
+            })),
             slash_items: vec![
                 SlashItem::new("meeting", "Meeting notes", |editor, window, cx| {
                     let template = "## Attendees\n\n- \n\n## Decisions\n\n- [ ] \n".to_string();

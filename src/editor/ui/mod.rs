@@ -7,6 +7,7 @@
 //! root, outside the key context of the document, so that keys typed into
 //! a popup field never reach the document's bindings.
 
+pub(super) mod complete;
 pub(super) mod find;
 pub(super) mod fold;
 pub(super) mod format_bar;

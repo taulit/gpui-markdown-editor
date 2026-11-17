@@ -111,6 +111,7 @@ pub struct MarkdownEditor {
     image_drag: Option<mouse::ImageDrag>,
     find: Option<ui::find::FindBar>,
     slash: Option<ui::slash::SlashMenu>,
+    completion: Option<ui::complete::CompletionMenu>,
     prompt: Option<ui::link::LinkPrompt>,
     /// The style popover of the format bar is open.
     style_menu: bool,
@@ -180,6 +181,7 @@ impl MarkdownEditor {
             image_drag: None,
             find: None,
             slash: None,
+            completion: None,
             prompt: None,
             style_menu: false,
             folded: Default::default(),
@@ -445,6 +447,9 @@ impl MarkdownEditor {
         if self.slash.is_some() && (changes.content || changes.selection) {
             self.refresh_slash();
         }
+        if self.completion.is_some() && (changes.content || changes.selection) {
+            self.refresh_completion();
+        }
         if changes.content || changes.selection {
             self.reveal_selection();
             self.restart_blink(cx);
@@ -538,6 +543,7 @@ impl Render for MarkdownEditor {
             .children(self.render_format_bar(cx))
             .children(self.render_find(cx))
             .children(self.render_slash(window, cx))
+            .children(self.render_completion(window, cx))
             .children(self.render_prompt(window, cx))
             .children(self.render_link_bubble(window, cx))
     }

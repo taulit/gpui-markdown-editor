@@ -5,6 +5,7 @@
 //! view's own queries.
 
 mod clipboard;
+mod complete;
 mod drag;
 mod editing;
 mod extension;

@@ -350,6 +350,14 @@ fn block(kind: BlockKind) -> Op {
 
 impl MarkdownEditor {
     pub(super) fn run(&mut self, op: Op, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .completion
+            .as_ref()
+            .is_some_and(|c| !c.items.is_empty())
+            && self.completion_key(&op, window, cx)
+        {
+            return;
+        }
         if self.slash.is_some() && self.slash_key(&op, window, cx) {
             return;
         }
@@ -435,6 +443,22 @@ impl MarkdownEditor {
             }
         }
         self.after_change(keep_goal, window, cx);
+    }
+
+    /// Keys of the open completion list. `true` if the key was used.
+    fn completion_key(&mut self, op: &Op, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        match op {
+            Op::Move(Motion::Up, false) => self.completion_move(-1),
+            Op::Move(Motion::Down, false) => self.completion_move(1),
+            Op::Enter | Op::Tab => {
+                let selected = self.completion.as_ref().map_or(0, |m| m.selected);
+                self.completion_choose(selected, window, cx);
+            }
+            Op::Cancel => self.completion = None,
+            _ => return false,
+        }
+        cx.notify();
+        true
     }
 
     /// Keys of the open slash menu. `true` if the key was used.
