@@ -351,6 +351,24 @@ impl MarkdownEditor {
         cx.notify();
     }
 
+    /// Selects the rectangle between two cells of a table, or the block
+    /// `anchor` as a whole if `head` is `None`, for screenshots.
+    #[doc(hidden)]
+    pub fn __select_cells_or_node(
+        &mut self,
+        anchor: BlockId,
+        head: Option<BlockId>,
+        cx: &mut Context<Self>,
+    ) {
+        let selection = match head {
+            Some(head) => Selection::Cells { anchor, head },
+            None => Selection::Node(anchor),
+        };
+        self.state.set_selection(selection);
+        self.state.take_changes();
+        cx.notify();
+    }
+
     fn layout_input(&self) -> LayoutInput<'_> {
         LayoutInput {
             document: &self.state.doc,
