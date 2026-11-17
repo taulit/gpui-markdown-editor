@@ -47,6 +47,9 @@ pub(crate) struct History {
     last_id: u64,
     /// The position with an empty undo stack.
     base: u64,
+    /// An IME composition is in progress: its edits form one entry, with
+    /// the id of that entry once there is one.
+    compose: Option<Option<u64>>,
 }
 
 impl History {
@@ -90,6 +93,27 @@ impl History {
         text: &str,
     ) {
         self.redo.clear();
+        if let Some(group) = self.compose {
+            match (group, self.undo.last_mut()) {
+                (Some(id), Some(last)) if last.id == id => {
+                    merge(last, forward, inverse, time, false);
+                }
+                _ => {
+                    self.last_id += 1;
+                    self.undo.push(Entry {
+                        id: self.last_id,
+                        forward,
+                        inverse,
+                        kind: EditKind::Other,
+                        time,
+                        word_end: false,
+                    });
+                    self.compose = Some(Some(self.last_id));
+                }
+            }
+            self.sealed = true;
+            return;
+        }
         let starts_word = !text.starts_with(char::is_whitespace);
         let word_end = text.ends_with(char::is_whitespace);
         let sealed = std::mem::take(&mut self.sealed);
@@ -100,24 +124,7 @@ impl History {
             };
             let new_word = matches!(kind, EditKind::Insert { .. }) && last.word_end && starts_word;
             if !sealed && kind != EditKind::Other && last.kind == kind && close && !new_word {
-                last.forward.steps.extend(forward.steps);
-                last.forward.selection_after = forward.selection_after;
-                let mut steps = inverse.steps;
-                steps.append(&mut last.inverse.steps);
-                last.inverse.steps = steps;
-                last.inverse.selection_before = inverse.selection_before;
-                for (id, dirty) in inverse.restore_dirty {
-                    if !last
-                        .inverse
-                        .restore_dirty
-                        .iter()
-                        .any(|(known, _)| *known == id)
-                    {
-                        last.inverse.restore_dirty.push((id, dirty));
-                    }
-                }
-                last.time = time;
-                last.word_end = word_end;
+                merge(last, forward, inverse, time, word_end);
                 return;
             }
         }
@@ -132,7 +139,26 @@ impl History {
         });
     }
 
+    /// Starts an IME composition: its edits until [`Self::end_compose`]
+    /// become one entry of their own.
+    pub(crate) fn begin_compose(&mut self) {
+        self.sealed = true;
+        self.compose = Some(None);
+    }
+
+    pub(crate) fn is_composing(&self) -> bool {
+        self.compose.is_some()
+    }
+
+    /// Ends the composition. Returns the id of its entry, if it made one.
+    pub(crate) fn end_compose(&mut self) -> Option<u64> {
+        let group = self.compose.take()?;
+        self.sealed = true;
+        group
+    }
+
     pub(crate) fn pop_undo(&mut self) -> Option<Entry> {
+        self.compose = None;
         self.sealed = true;
         self.undo.pop()
     }
@@ -150,4 +176,32 @@ impl History {
     pub(crate) fn push_undone(&mut self, entry: Entry) {
         self.undo.push(entry);
     }
+}
+
+/// Appends a transaction to the entry `last`.
+fn merge(
+    last: &mut Entry,
+    forward: Transaction,
+    inverse: Transaction,
+    time: Option<Instant>,
+    word_end: bool,
+) {
+    last.forward.steps.extend(forward.steps);
+    last.forward.selection_after = forward.selection_after;
+    let mut steps = inverse.steps;
+    steps.append(&mut last.inverse.steps);
+    last.inverse.steps = steps;
+    last.inverse.selection_before = inverse.selection_before;
+    for (id, dirty) in inverse.restore_dirty {
+        if !last
+            .inverse
+            .restore_dirty
+            .iter()
+            .any(|(known, _)| *known == id)
+        {
+            last.inverse.restore_dirty.push((id, dirty));
+        }
+    }
+    last.time = time;
+    last.word_end = word_end;
 }

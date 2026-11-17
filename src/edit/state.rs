@@ -56,6 +56,8 @@ pub(crate) struct EditorState {
     placeholder: Option<BlockId>,
     /// An input rule just fired: Backspace undoes it.
     pub(crate) rule_armed: bool,
+    /// The node and its text before the IME composition in progress.
+    pub(crate) composing: Option<(BlockId, Inline)>,
     changes: Changes,
 }
 
@@ -71,6 +73,7 @@ impl EditorState {
             index: PathIndex::default(),
             placeholder: None,
             rule_armed: false,
+            composing: None,
             changes: Changes::default(),
         };
         state.reset_selection();
@@ -253,6 +256,7 @@ impl EditorState {
         let Some(selection) = self.validate(selection) else {
             return false;
         };
+        self.end_composition();
         self.history.seal();
         self.rule_armed = false;
         self.pending_marks = None;
@@ -501,7 +505,39 @@ impl EditorState {
         self.changes.content = true;
     }
 
+    /// Ends the IME composition in progress. A composition that left its
+    /// text as it was leaves no undo entry.
+    pub(crate) fn end_composition(&mut self) {
+        let entry = self.history.end_compose();
+        let Some((node, before)) = self.composing.take() else {
+            return;
+        };
+        let Some(id) = entry else {
+            return;
+        };
+        if self.history.position() != id || self.text_of(node) != Some(&before) {
+            return;
+        }
+        let Some(entry) = self.history.pop_undo() else {
+            return;
+        };
+        // Content is unchanged; this only restores ids and dirty flags.
+        match transaction::apply(&mut self.doc, &self.index, &entry.inverse) {
+            Ok((_, applied)) => {
+                self.record(applied);
+                if let Some(selection) = self.validate(self.selection.clone()) {
+                    self.selection = selection;
+                }
+            }
+            Err(error) => {
+                debug_assert!(false, "reverting a composition failed: {error}");
+                self.history.clear();
+            }
+        }
+    }
+
     pub(crate) fn undo(&mut self) -> bool {
+        self.end_composition();
         let Some(entry) = self.history.pop_undo() else {
             return false;
         };
@@ -521,6 +557,7 @@ impl EditorState {
     }
 
     pub(crate) fn redo(&mut self) -> bool {
+        self.end_composition();
         let Some(entry) = self.history.pop_redo() else {
             return false;
         };

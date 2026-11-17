@@ -163,14 +163,16 @@ impl EditorState {
             self.select_for_ime(node, range);
         }
         self.marked = None;
-        if text.is_empty() {
-            return self.type_text("", now);
-        }
-        if had_marked {
+        let composing = self.history.is_composing();
+        let changed = if text.is_empty() {
+            self.type_text("", now)
+        } else if had_marked || composing {
             self.type_text(text, now)
         } else {
             self.insert_text(text, now)
-        }
+        };
+        self.end_composition();
+        changed
     }
 
     /// Sets preedit text: replaces the range (or the marked range, or the
@@ -184,16 +186,26 @@ impl EditorState {
         now: Instant,
     ) -> bool {
         let target = self.ime_target(range_utf16);
+        if !self.history.is_composing()
+            && !text.is_empty()
+            && let Some((node, _)) = &target
+            && let Some(inline) = self.text_of(*node).cloned()
+        {
+            self.history.begin_compose();
+            self.composing = Some((*node, inline));
+        }
         if let Some((node, range)) = target {
             self.select_for_ime(node, range);
         }
         let changed = self.type_text(text, now);
         let Some(head) = self.selection.head() else {
             self.marked = None;
+            self.end_composition();
             return changed;
         };
         if text.is_empty() {
             self.marked = None;
+            self.end_composition();
             return changed;
         }
         let start = head.offset.saturating_sub(text.len());
@@ -218,6 +230,7 @@ impl EditorState {
     /// Ends the composition and keeps the text.
     pub(crate) fn unmark(&mut self) {
         self.marked = None;
+        self.end_composition();
     }
 }
 
