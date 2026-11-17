@@ -15,9 +15,11 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-Nothing. The ten E2 bug-review findings are fixed on `phase/e2-editing` (commits `fix(edit): …`,
-`fix(markdown): …`), each with a regression test; the gate checks were re-run green afterwards and the
-E2 PR is open against `main`, tagged `v0.0.3`.
+- E2 PR: https://github.com/taulit/gpui-markdown-editor/pull/4 (tag `v0.0.3`), waiting for the user to merge.
+- E3 on `phase/e3-blocks-ui` (stacked on `phase/e2-editing`). Part 1, a sub-agent: table editing and images
+  (commits `feat(table): …`, `feat(image): …`). Part 2, not started: slash menu, format bar, link popover,
+  find bar, folding, HTML/image paste, drag, extension hooks, accessibility roles. Run the parts one after the
+  other; they touch the same files.
 
 ## Next
 
