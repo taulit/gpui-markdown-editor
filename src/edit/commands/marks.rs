@@ -46,6 +46,26 @@ impl EditorState {
             .collect()
     }
 
+    /// The selected segments `mark` applies to. Emphasis and strikethrough
+    /// leave out whitespace at the edges of a segment: Markdown cannot open
+    /// or close them next to whitespace (`** x**`), so they would not read
+    /// back the same.
+    fn mark_segments(&self, mark: &Mark) -> Vec<(BlockId, Range<usize>)> {
+        let segments = self.selected_segments();
+        if !matches!(mark, Mark::Bold | Mark::Italic | Mark::Strike) {
+            return segments;
+        }
+        segments
+            .into_iter()
+            .filter_map(|(id, range)| {
+                let text = &self.text_of(id)?.text[range.clone()];
+                let start = range.start + (text.len() - text.trim_start().len());
+                let end = range.start + text.trim_end().len();
+                (start < end).then_some((id, start..end))
+            })
+            .collect()
+    }
+
     /// The marks text typed at the caret gets.
     pub(crate) fn caret_marks(&self) -> Vec<Mark> {
         if let Some(pending) = &self.pending_marks {
@@ -69,7 +89,7 @@ impl EditorState {
                 .iter()
                 .any(|m| inline_ops::same_kind(m, mark));
         }
-        let segments = self.selected_segments();
+        let segments = self.mark_segments(mark);
         !segments.is_empty()
             && segments.iter().all(|(id, range)| {
                 self.text_of(*id)
@@ -95,7 +115,7 @@ impl EditorState {
             self.rule_armed = false;
             return true;
         }
-        let segments = self.selected_segments();
+        let segments = self.mark_segments(&mark);
         if segments.is_empty() {
             return false;
         }

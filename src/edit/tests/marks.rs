@@ -91,3 +91,21 @@ fn pending_marks_stay_active_while_typing() {
     type_str(&mut state, &mut Clock::new(), "x");
     assert_eq!(md(&state), "sexe\n");
 }
+
+#[test]
+fn emphasis_leaves_out_edge_whitespace_so_it_reads_back() {
+    let mut state = ed("p« x‸\n");
+    state.toggle_mark(Mark::Bold);
+    assert_eq!(md(&state), "p **x**\n");
+    let back = Document::parse_with(&state.markdown(), extensions());
+    assert_eq!(back.blocks[0].content, state.doc.blocks[0].content);
+    assert!(state.has_mark(&Mark::Bold));
+    state.toggle_mark(Mark::Bold);
+    assert_eq!(md(&state), "p x\n");
+}
+
+#[test]
+fn spaces_inside_a_line_are_written_plain() {
+    let state = typed("a‸\n", " b  c ");
+    assert_eq!(md(&state), "a b  c&#32;\n");
+}
