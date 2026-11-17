@@ -26,7 +26,9 @@ pub enum EditorEvent {
     WikiLinkClicked(String),
     /// A tag was activated. Holds the tag without the leading `#`.
     TagClicked(String),
-    /// A file that is not an image was activated. Holds its source as written
-    /// in the Markdown.
+    /// An attachment was activated: a paragraph that is only a link to a
+    /// local file that is not an image, clicked on its row (or Ctrl/Cmd+
+    /// clicked on its name). Holds the link target as written in the
+    /// Markdown.
     AttachmentClicked(String),
 }

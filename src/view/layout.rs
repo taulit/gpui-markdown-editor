@@ -14,6 +14,7 @@ use gpui::{
 use crate::model::{Align, Block, BlockId, BlockKind, Inline, Mark, MarkSpan};
 use crate::style::EditorStyle;
 
+use super::images::{ImageInfo, ImageStates};
 use super::text::{TextLayout, TextSpec, build_runs, hash_inline};
 
 /// Where a top-level block stands in the document, as far as it changes its
@@ -126,6 +127,17 @@ pub(crate) enum Decoration {
         bounds: Bounds<Pixels>,
         checked: bool,
     },
+    /// A loaded image, painted with the image radius.
+    Image {
+        bounds: Bounds<Pixels>,
+        src: SharedString,
+    },
+    /// The row of an attachment paragraph and its file icon.
+    Attachment {
+        id: BlockId,
+        bounds: Bounds<Pixels>,
+        icon: Bounds<Pixels>,
+    },
 }
 
 /// The laid out top-level block.
@@ -186,8 +198,80 @@ impl TextCache {
 }
 
 /// Everything block layout needs besides the block.
+/// Layout inputs besides the document and style that change the look of
+/// tables and images.
+#[derive(Clone, Copy)]
+pub(crate) struct Extras<'a> {
+    pub widths: &'a super::ColumnWidths,
+    pub images: &'a ImageStates,
+    /// The width of an image being resized, shown before it is applied.
+    pub image_preview: Option<(BlockId, u32)>,
+    /// The file sizes of attachments by link target (`None`: unknown).
+    pub attachments: &'a AttachmentSizes,
+}
+
+/// File sizes of attachments by link target, see [`attachment_of`].
+pub(crate) type AttachmentSizes = HashMap<SharedString, Option<u64>>;
+
+/// The link target of an attachment: a paragraph that consists of one link
+/// to a local file that is not an image (plan §9). Such a paragraph is
+/// drawn as a row with a file icon, the link text as file name, and the
+/// file size if [`EditorOptions::resolve_src`](crate::EditorOptions::resolve_src)
+/// resolves it.
+pub(crate) fn attachment_of(block: &Block) -> Option<&SharedString> {
+    if block.kind != BlockKind::Paragraph || block.content.text.trim().is_empty() {
+        return None;
+    }
+    let [span] = block.content.marks.as_slice() else {
+        return None;
+    };
+    let Mark::Link { url, .. } = &span.mark else {
+        return None;
+    };
+    let whole = span.range == (0..block.content.text.len());
+    let local = !url.is_empty() && !url.starts_with('#') && !has_scheme(url);
+    let image = super::images::image_mime(std::path::Path::new(url.as_ref())).is_some();
+    (whole && local && !image).then_some(url)
+}
+
+/// `true` for `https:`, `mailto:` and other URL schemes; a Windows drive
+/// letter (`C:`) is not one.
+fn has_scheme(url: &str) -> bool {
+    let Some(colon) = url.find(':') else {
+        return false;
+    };
+    let scheme = &url[..colon];
+    scheme.len() > 1
+        && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+}
+
+/// A file size for people: `512 B`, `12 KB`, `1.4 MB`.
+pub(crate) fn format_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64 / 1024.;
+    let mut unit = 0;
+    while value >= 1024. && unit + 1 < UNITS.len() {
+        value /= 1024.;
+        unit += 1;
+    }
+    if value < 10. {
+        format!("{value:.1} {}", UNITS[unit])
+    } else {
+        format!("{value:.0} {}", UNITS[unit])
+    }
+}
+
 pub(crate) struct LayoutEnv<'a> {
     pub style: &'a EditorStyle,
+    /// For the look of custom marks.
+    pub extensions: &'a crate::extension::Extensions,
+    pub extras: Extras<'a>,
     pub ts: &'a WindowTextSystem,
     pub texts: &'a mut TextCache,
     pub frame: u64,
@@ -213,7 +297,7 @@ impl LayoutEnv<'_> {
             e.frame = self.frame;
             return (e.layout.clone(), e.backgrounds.clone());
         }
-        let (runs, backgrounds) = build_runs(inline, spec, self.style);
+        let (runs, backgrounds) = build_runs(inline, spec, self.style, self.extensions);
         let layout = Arc::new(TextLayout::shape(self.ts, &inline.text, &runs, spec, wrap));
         self.texts.shaped += 1;
         self.texts.entries.insert(
@@ -231,7 +315,7 @@ impl LayoutEnv<'_> {
     /// Shapes decoration text that has no id (bullets, numbers, alt text).
     fn label(&mut self, text: &str, spec: &TextSpec) -> Arc<TextLayout> {
         let inline = Inline::plain(text);
-        let (runs, _) = build_runs(&inline, spec, self.style);
+        let (runs, _) = build_runs(&inline, spec, self.style, self.extensions);
         Arc::new(TextLayout::shape(self.ts, text, &runs, spec, None))
     }
 
@@ -246,6 +330,7 @@ impl LayoutEnv<'_> {
             color: s.text_color,
             strike: false,
             plain: false,
+            tabular: false,
         }
     }
 
@@ -337,6 +422,62 @@ fn place(
     };
 
     match &block.kind {
+        BlockKind::Paragraph if !ctx.title && attachment_of(block).is_some() => {
+            let url = attachment_of(block).cloned().unwrap_or_default();
+            let (pad_x, pad_y) = (px(12.), px(8.));
+            let icon_size = size(px(16.), px(20.));
+            let gap = px(10.);
+            let spec = env.body();
+            let mut label_spec = spec.clone();
+            label_spec.color = s.muted_color;
+            label_spec.size = s.table_text_size;
+            let label = env
+                .extras
+                .attachments
+                .get(&url)
+                .copied()
+                .flatten()
+                .map(|bytes| env.label(&format_size(bytes), &label_spec));
+            let label_w = label.as_ref().map_or(Pixels::ZERO, |l| l.width + gap);
+            let above = if ctx.first { Pixels::ZERO } else { px(2.) };
+            let top = y + above;
+            let text_x = x + pad_x + icon_size.width + gap;
+            let text_w = (width - (text_x - x) - pad_x - label_w).max(px(20.));
+            let h = text_node(
+                env,
+                out,
+                block.id,
+                &block.content,
+                &spec,
+                point(text_x, top + pad_y),
+                text_w,
+            );
+            let row_h = h + pad_y * 2.;
+            let lh = spec.line_height;
+            let icon = Bounds::new(
+                point(
+                    x + pad_x,
+                    top + pad_y + ((lh - icon_size.height) / 2.).max(Pixels::ZERO),
+                ),
+                icon_size,
+            );
+            out.decorations.push(Decoration::Attachment {
+                id: block.id,
+                bounds: Bounds::new(point(x, top), size(width, row_h)),
+                icon,
+            });
+            if let Some(label) = label {
+                let lw = label.width;
+                let ly = top + pad_y + ((lh - label.height()) / 2.).max(Pixels::ZERO);
+                out.decorations.push(Decoration::Text {
+                    origin: point(x + width - pad_x - lw, ly),
+                    text: label,
+                    align: TextAlign::Left,
+                    width: lw,
+                });
+            }
+            (above, row_h, para)
+        }
         BlockKind::Paragraph | BlockKind::Heading(_) => {
             let level = match block.kind {
                 BlockKind::Heading(l) => l,
@@ -516,8 +657,36 @@ fn place(
         BlockKind::Image(image) => {
             let m = px(12.);
             let above = if ctx.first { Pixels::ZERO } else { m };
-            let w = image
-                .width
+            let shown_width = env
+                .extras
+                .image_preview
+                .filter(|(id, _)| *id == block.id)
+                .map(|(_, w)| w)
+                .or(image.width);
+            let info = env.extras.images.get(&image.src);
+            if let Some(ImageInfo::Ready {
+                width: iw,
+                height: ih,
+                ..
+            }) = info
+            {
+                // As wide as the image (or the width set for it), at most
+                // the content width, keeping the aspect ratio.
+                let natural = px(*iw as f32);
+                let w = shown_width
+                    .map_or(natural, |w| px(w as f32))
+                    .min(width)
+                    .max(px(40.));
+                let h = (w * (*ih as f32 / *iw as f32)).clamp(px(8.), px(4000.));
+                let bounds = Bounds::new(point(x, y + above), size(w, h));
+                out.decorations.push(Decoration::Image {
+                    bounds,
+                    src: image.src.clone(),
+                });
+                out.rects.push((block.id, RectKind::Image, bounds));
+                return (above, h, m);
+            }
+            let w = shown_width
                 .map_or(width, |w| px(w as f32).min(width))
                 .max(px(40.));
             let h = s.image_placeholder_height;
@@ -527,10 +696,15 @@ fn place(
                 color: s.code_background,
                 radius: s.image_radius,
             });
-            let label: SharedString = if image.alt.is_empty() {
+            let name: SharedString = if image.alt.is_empty() {
                 image.src.clone()
             } else {
                 image.alt.clone()
+            };
+            let label: SharedString = if matches!(info, Some(ImageInfo::Failed)) {
+                format!("{name} · could not be loaded").into()
+            } else {
+                name
             };
             if !label.is_empty() {
                 let mut spec = env.body();
@@ -607,6 +781,46 @@ fn links_of(inline: &Inline) -> Vec<MarkSpan> {
         .collect()
 }
 
+/// `true` if every non-empty cell is a number (digits with separators,
+/// sign, currency or percent) and there is at least one.
+fn numeric_column<'a>(cells: impl Iterator<Item = &'a crate::model::Cell>) -> bool {
+    let mut any = false;
+    for cell in cells {
+        let text = cell.content().text().trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !is_number(text) {
+            return false;
+        }
+        any = true;
+    }
+    any
+}
+
+/// A number as written in a table: `1,234.50`, `-3`, `+4 %`, `€ 12`,
+/// `1 000`, `12'000`, `$5`, `3.5‰`.
+pub(crate) fn is_number(text: &str) -> bool {
+    let mut digits = false;
+    for ch in text.chars() {
+        match ch {
+            '0'..='9' => digits = true,
+            '.' | ',' | '\'' | '’' | ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}' => {}
+            '+' | '-' | '−' | '±' | '%' | '‰' => {}
+            '$' | '€' | '£' | '¥' | '₹' | '₽' | '₩' | '¢' | '₺' | '₴' | '₪' | '₫' | '฿' | '₿' =>
+                {}
+            _ => return false,
+        }
+    }
+    digits
+}
+
+/// The narrowest a table column gets.
+pub(crate) const MIN_COLUMN: Pixels = px(48.);
+/// The widest a column gets from its content alone (unless the content
+/// column is very wide).
+const MAX_COLUMN: Pixels = px(320.);
+
 fn place_table(
     env: &mut LayoutEnv<'_>,
     id: BlockId,
@@ -630,6 +844,7 @@ fn place_table(
     let body = TextSpec {
         size: s.table_text_size,
         line_height: s.table_text_size * s.table_line_height,
+        tabular: true,
         ..env.body()
     };
     let header = TextSpec {
@@ -638,17 +853,41 @@ fn place_table(
     };
     let spec_for = |row: usize| if row == 0 { &header } else { &body };
 
-    // Natural column widths, then scaled to fill the width like an HTML
-    // table with `width: 100%`.
-    let mut natural = vec![px(24.); cols];
+    // Columns are as wide as their content between a minimum and a
+    // maximum, or as the user dragged them. A table wider than the column
+    // is scaled down to fit and its text wraps.
+    let mut natural = vec![MIN_COLUMN; cols];
     for (r, row) in table.rows.iter().enumerate() {
         for (c, cell) in row.iter().enumerate() {
             let (t, _) = env.text(cell.id, &cell.content, spec_for(r), None);
             natural[c] = natural[c].max(t.width + pad_x * 2. + px(1.));
         }
     }
-    let total: Pixels = natural.iter().copied().sum();
-    let widths: Vec<Pixels> = natural.iter().map(|w| *w * (width / total)).collect();
+    let max_auto = MAX_COLUMN.max(width * 0.5);
+    let stored = env.extras.widths.get(&id);
+    let mut widths: Vec<Pixels> = natural
+        .iter()
+        .enumerate()
+        .map(|(c, n)| match stored.and_then(|s| s.get(c)) {
+            Some(w) if w.is_finite() && *w > 0. => px(*w).max(MIN_COLUMN),
+            _ => (*n).min(max_auto),
+        })
+        .collect();
+    let total: Pixels = widths.iter().copied().sum();
+    if total > width {
+        for w in &mut widths {
+            *w *= width / total;
+        }
+    }
+    let width: Pixels = widths.iter().copied().sum();
+    // A column without an alignment whose body cells are all numbers is
+    // right-aligned.
+    let numeric: Vec<bool> = (0..cols)
+        .map(|c| {
+            table.align.get(c).copied().unwrap_or_default() == Align::None
+                && numeric_column(table.rows.iter().skip(1).filter_map(|r| r.get(c)))
+        })
+        .collect();
 
     let mut row_y = y;
     let mut row_tops = Vec::with_capacity(table.rows.len() + 1);
@@ -666,6 +905,7 @@ fn place_table(
             let align = match table.align.get(c).copied().unwrap_or_default() {
                 Align::Center => TextAlign::Center,
                 Align::Right => TextAlign::Right,
+                Align::None if numeric[c] => TextAlign::Right,
                 Align::None | Align::Left => TextAlign::Left,
             };
             let offsets = text.line_offsets(align, inner);
@@ -737,15 +977,15 @@ fn place_table(
 }
 
 /// Hash of everything that decides the layout of a top-level block.
-pub(crate) fn block_key(block: &Block, ctx: BlockCtx, width: Pixels) -> u64 {
+pub(crate) fn block_key(block: &Block, ctx: BlockCtx, width: Pixels, extras: Extras<'_>) -> u64 {
     let mut h = DefaultHasher::new();
     ctx.hash(&mut h);
     width.as_f32().to_bits().hash(&mut h);
-    hash_block(block, &mut h);
+    hash_block(block, &mut h, extras);
     h.finish()
 }
 
-fn hash_block(block: &Block, h: &mut DefaultHasher) {
+fn hash_block(block: &Block, h: &mut DefaultHasher, extras: Extras<'_>) {
     block.id.hash(h);
     std::mem::discriminant(&block.kind).hash(h);
     match &block.kind {
@@ -756,8 +996,29 @@ fn hash_block(block: &Block, h: &mut DefaultHasher) {
             img.alt.hash(h);
             img.src.hash(h);
             img.width.hash(h);
+            match extras.images.get(&img.src) {
+                Some(ImageInfo::Ready {
+                    image,
+                    width,
+                    height,
+                }) => (1u8, image.id.0, *width, *height).hash(h),
+                Some(ImageInfo::Failed) => 2u8.hash(h),
+                Some(ImageInfo::Loading) | None => 0u8.hash(h),
+            }
+            extras
+                .image_preview
+                .filter(|(id, _)| *id == block.id)
+                .hash(h);
+        }
+        BlockKind::Paragraph => {
+            if let Some(url) = attachment_of(block) {
+                extras.attachments.get(url).hash(h);
+            }
         }
         BlockKind::Table(t) => {
+            for w in extras.widths.get(&block.id).into_iter().flatten() {
+                w.to_bits().hash(h);
+            }
             for a in &t.align {
                 std::mem::discriminant(a).hash(h);
             }
@@ -774,7 +1035,7 @@ fn hash_block(block: &Block, h: &mut DefaultHasher) {
     hash_inline(&block.content, h);
     block.children.len().hash(h);
     for child in &block.children {
-        hash_block(child, h);
+        hash_block(child, h, extras);
     }
 }
 
@@ -824,4 +1085,31 @@ pub(crate) fn estimate_height(block: &Block, style: &EditorStyle, width: Pixels)
         .map(|c| estimate_height(c, style, width))
         .sum();
     own + kids
+}
+
+#[cfg(test)]
+mod number_tests {
+    use super::is_number;
+
+    #[test]
+    fn file_sizes() {
+        use super::format_size;
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(1023), "1023 B");
+        assert_eq!(format_size(2048), "2.0 KB");
+        assert_eq!(format_size(248 * 1024), "248 KB");
+        assert_eq!(format_size(3 << 19), "1.5 MB");
+    }
+
+    #[test]
+    fn numbers_as_written_in_tables() {
+        for yes in [
+            "1", "1,234.50", "-3", "+4 %", "€ 12", "1 000", "12'000", "$5", "3.5‰", "−7", "1.234,5",
+        ] {
+            assert!(is_number(yes), "{yes:?}");
+        }
+        for no in ["", "-", "%", "x1", "1a", "v1.2", "12 kg", "€"] {
+            assert!(!is_number(no), "{no:?}");
+        }
+    }
 }

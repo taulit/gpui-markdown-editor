@@ -39,6 +39,7 @@ impl EditorState {
         if let Selection::Node(id) = self.selection {
             return self.type_after_node(id, text);
         }
+        self.collapse_cells();
         let pending = self.pending_marks.take();
         // Marks toggled at a caret stay active for the text typed after it,
         // until the caret moves.
@@ -96,6 +97,7 @@ impl EditorState {
     pub(crate) fn delete_selection(&mut self) -> bool {
         match self.selection.clone() {
             Selection::Node(id) => self.delete_node(id),
+            Selection::Cells { anchor, head } => self.clear_cells(anchor, head),
             Selection::All => self.transact(EditKind::Other, None, "", move |tr, _| {
                 Ok(Selection::caret(tr.clear_all()?))
             }),

@@ -230,8 +230,354 @@ fn e2_typing() {
             |_, _| {},
             &[],
             &keys,
+            None,
         );
     }
+}
+
+const E3_TABLE: &str = "\
+Trip budget
+
+| Item        | Who  | Cost (€) |
+|:------------|:----:|---------:|
+| Cabin       | Anna |      240 |
+| Fuel        | Ben  |       85 |
+| Groceries   | Both |       62 |
+
+| Day | Plan                          | Km  |
+|-----|-------------------------------|----:|
+| Sat | Hike to the lake, swim, picnic | 12  |
+| Sun | Breakfast, drive home         | 180 |
+";
+
+fn e3_table_setup(rect: bool) -> impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) {
+    move |editor, cx| {
+        let tables: Vec<_> = editor
+            .document()
+            .blocks()
+            .iter()
+            .filter_map(|b| match b.kind() {
+                gpui_markdown_editor::BlockKind::Table(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        // The first column of the second table is dragged wider.
+        let mut meta = gpui_markdown_editor::DocMeta::default();
+        meta.column_widths.insert(1, vec![110., 240., 70.]);
+        editor.set_meta(meta, cx);
+        if rect {
+            let (a, b) = (tables[0].rows[1][1].id(), tables[0].rows[2][2].id());
+            editor.__select_cells_or_node(a, Some(b), cx);
+        } else {
+            let cell = tables[1].rows[1][1].id();
+            let pos = TextPos {
+                block: cell,
+                offset: 4,
+            };
+            editor.__set_selection(pos, pos, cx);
+        }
+    }
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_table() {
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture(
+            &format!("e3-table-{name}"),
+            mode,
+            E3_TABLE,
+            e3_table_setup(true),
+        );
+        capture(
+            &format!("e3-table-caret-{name}"),
+            mode,
+            E3_TABLE,
+            e3_table_setup(false),
+        );
+    }
+}
+
+const E3_IMAGE: &str = "\
+Lake trip
+
+![Lake at sunrise](lake.png)
+
+The selected one, made narrower:
+
+![Ridge|220](ridge.png)
+
+![Missing photo](gone.png)
+";
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_image() {
+    let dir = std::env::temp_dir().join(format!("gme-e3-image-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    write_gradient(
+        &dir.join("lake.png"),
+        1200,
+        360,
+        [255, 170, 90],
+        [70, 120, 200],
+    );
+    write_gradient(
+        &dir.join("ridge.png"),
+        900,
+        600,
+        [60, 140, 90],
+        [230, 230, 210],
+    );
+    let select = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let ridge = editor.document().blocks()[3].id();
+        editor.__select_cells_or_node(ridge, None, cx);
+    };
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture_with_keys(
+            &format!("e3-image-{name}"),
+            mode,
+            E3_IMAGE,
+            select,
+            &[],
+            &[],
+            Some(&dir),
+        );
+    }
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// Writes a PNG with a diagonal gradient between two colors.
+/// Keystrokes that type `text` (`\n` is Enter).
+fn keys_for(text: &str) -> Vec<String> {
+    text.chars()
+        .map(|ch| match ch {
+            '\n' => "enter".to_string(),
+            ' ' => "space".to_string(),
+            ch => ch.to_string(),
+        })
+        .collect()
+}
+
+/// Keystrokes from a space separated list, as in `simulate_keystrokes`.
+fn keys(list: &str) -> Vec<String> {
+    list.split(' ').map(str::to_string).collect()
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_find() {
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        let mut typed = keys("ctrl-f");
+        typed.extend(keys_for("the"));
+        typed.extend(keys("enter"));
+        capture_with_keys(
+            &format!("e3-find-{name}"),
+            mode,
+            E2_NOTE,
+            |_, _| {},
+            &[],
+            &typed,
+            None,
+        );
+    }
+}
+
+const E3_SHORT: &str = "\
+Saturday
+
+Market at 9, then the bike shop. Remember the **receipt** for the wheel.
+
+";
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_slash() {
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        let mut typed = keys("ctrl-end enter");
+        typed.extend(keys_for("/"));
+        capture_with_keys(
+            &format!("e3-slash-{name}"),
+            mode,
+            E3_SHORT,
+            |_, _| {},
+            &[],
+            &typed,
+            None,
+        );
+    }
+}
+
+const E3_LINK: &str = "\
+Saturday
+
+Market at 9, then the [bike shop](https://bikes.example/opening-hours). Remember the receipt for the wheel.
+
+Lunch at the lake if the weather holds.
+";
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_link() {
+    // "receipt" selected, Ctrl+K and a URL typed.
+    let select = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let text = editor.document().blocks()[1].text().to_string();
+        let start = text.find("receipt").unwrap();
+        let anchor = TextPos {
+            block,
+            offset: start,
+        };
+        let head = TextPos {
+            block,
+            offset: start + "receipt".len(),
+        };
+        editor.__set_selection(anchor, head, cx);
+    };
+    // The caret in the link shows the bubble.
+    let caret = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let pos = TextPos { block, offset: 26 };
+        editor.__set_selection(pos, pos, cx);
+    };
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        let mut typed = keys("ctrl-k");
+        typed.extend(keys_for("https://shop.example/receipts"));
+        capture_with_keys(
+            &format!("e3-link-{name}"),
+            mode,
+            E3_LINK,
+            select,
+            &[],
+            &typed,
+            None,
+        );
+        capture(&format!("e3-link-bubble-{name}"), mode, E3_LINK, caret);
+    }
+}
+
+/// A left click at `(x, y)`.
+fn click_at(x: f32, y: f32) -> Vec<PlatformInput> {
+    let position = point(px(x), px(y));
+    vec![
+        PlatformInput::MouseDown(MouseDownEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+            first_mouse: false,
+        }),
+        PlatformInput::MouseUp(MouseUpEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+        }),
+    ]
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_formatbar() {
+    // "receipt" (bold) selected: the mark tools, bold active.
+    let select = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let text = editor.document().blocks()[1].text().to_string();
+        let start = text.find("receipt").unwrap();
+        let anchor = TextPos {
+            block,
+            offset: start,
+        };
+        let head = TextPos {
+            block,
+            offset: start + "receipt".len(),
+        };
+        editor.__set_selection(anchor, head, cx);
+    };
+    let caret = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let pos = TextPos { block, offset: 6 };
+        editor.__set_selection(pos, pos, cx);
+    };
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture(&format!("e3-formatbar-{name}"), mode, E3_SHORT, select);
+        // The caret tools with the style popover opened by "Aa".
+        capture_with_input(
+            &format!("e3-formatbar-styles-{name}"),
+            mode,
+            E3_SHORT,
+            caret,
+            &click_at(364., 656.),
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_fold() {
+    // "Packing" folded (its chevron stays), the mouse over "To do".
+    let fold = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let mut meta = gpui_markdown_editor::DocMeta::default();
+        meta.folded_headings.insert(0);
+        editor.set_meta(meta, cx);
+    };
+    let hover = vec![PlatformInput::MouseMove(MouseMoveEvent {
+        position: point(px(400.), px(205.)),
+        pressed_button: None,
+        modifiers: Modifiers::default(),
+    })];
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture_with_input(&format!("e3-fold-{name}"), mode, E2_NOTE, fold, &hover);
+    }
+}
+
+const E3_ATTACHMENT: &str = "\
+Trip documents
+
+The booking and the route are attached:
+
+[Booking confirmation.pdf](booking.pdf)
+
+[Route plan.gpx](route.gpx)
+
+[Packing list.xlsx](missing.xlsx)
+
+Bring a printed copy of the booking.
+";
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_attachment() {
+    let dir = std::env::temp_dir().join(format!("gme-e3-attach-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("booking.pdf"), vec![0u8; 248 * 1024]).unwrap();
+    std::fs::write(dir.join("route.gpx"), vec![0u8; 3 * 1024 * 1024 / 2]).unwrap();
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture_with_keys(
+            &format!("e3-attachment-{name}"),
+            mode,
+            E3_ATTACHMENT,
+            |_, _| {},
+            &[],
+            &[],
+            Some(&dir),
+        );
+    }
+    std::fs::remove_dir_all(dir).ok();
+}
+
+fn write_gradient(path: &Path, width: u32, height: u32, from: [u8; 3], to: [u8; 3]) {
+    let img = image::RgbaImage::from_fn(width, height, |x, y| {
+        let t = (x as f32 / width as f32 + y as f32 / height as f32) / 2.;
+        let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t) as u8;
+        image::Rgba([
+            mix(from[0], to[0]),
+            mix(from[1], to[1]),
+            mix(from[2], to[2]),
+            255,
+        ])
+    });
+    img.save(path).unwrap();
 }
 
 /// A document of `lines` lines: sections with paragraphs and lists.
@@ -273,7 +619,7 @@ fn capture_with_input(
     setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
     events: &[PlatformInput],
 ) {
-    capture_with_keys(name, mode, markdown, setup, events, &[]);
+    capture_with_keys(name, mode, markdown, setup, events, &[], None);
 }
 
 /// Like [`capture_with_input`], typing `keys` (keystrokes such as `a`,
@@ -285,7 +631,9 @@ fn capture_with_keys(
     setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
     events: &[PlatformInput],
     keys: &[String],
+    image_dir: Option<&Path>,
 ) {
+    let image_dir = image_dir.map(Path::to_path_buf);
     // Every platform instance starts its own worker threads, so the text
     // system is taken from one platform and shared by all screenshots.
     static TEXT_SYSTEM: OnceLock<Arc<dyn PlatformTextSystem>> = OnceLock::new();
@@ -306,7 +654,13 @@ fn capture_with_keys(
     let window = cx
         .open_window(size(px(900.), px(700.)), |window, cx| {
             let editor = cx.new(|cx| {
+                let resolve_src = image_dir.clone().map(|dir| {
+                    let resolver: gpui_markdown_editor::SrcResolver =
+                        Arc::new(move |src: &str| Some(dir.join(src)).filter(|p| p.exists()));
+                    resolver
+                });
                 let options = EditorOptions {
+                    resolve_src,
                     first_line_is_title: true,
                     extensions: vec![Box::new(WikiLink), Box::new(Tag), Box::new(Highlight)],
                     ..Default::default()
@@ -323,9 +677,16 @@ fn capture_with_keys(
             cx.new(|cx| Root::new(page, window, cx))
         })
         .expect("failed to open the offscreen window");
-    cx.run_until_parked();
-    cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
-        .expect("failed to draw");
+    // Images decode on background threads: draw until they are in.
+    for _ in 0..8 {
+        cx.run_until_parked();
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .expect("failed to draw");
+        if image_dir.is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(40));
+    }
     if !events.is_empty() || !keys.is_empty() {
         cx.update_window(window.into(), |_, window, cx| {
             for event in events {
@@ -401,6 +762,13 @@ fn apply_sheaf_theme(mode: ThemeMode, cx: &mut gpui::App) {
         theme.link = accent;
         theme.caret = accent;
         theme.selection = accent.opacity(0.4);
+        // Popovers and menus: `pop` of the prototype.
+        theme.popover = if mode.is_dark() {
+            rgb(0x38383d).into()
+        } else {
+            rgb(0xffffff).into()
+        };
+        theme.popover_foreground = foreground;
         if let Some(font) = font {
             theme.font_family = font.into();
         }

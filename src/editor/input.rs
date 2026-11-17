@@ -59,6 +59,8 @@ impl EntityInputHandler for MarkdownEditor {
     ) {
         self.state
             .replace_text_in_range_utf16(range, text, Instant::now());
+        self.maybe_open_slash(text);
+        self.maybe_open_completion(text);
         self.after_change(false, window, cx);
     }
 

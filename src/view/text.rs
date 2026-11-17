@@ -10,7 +10,7 @@ use gpui::{
     font, point, px, size,
 };
 
-use crate::extensions::{Tag, WikiLink};
+use crate::extension::MarkColor;
 use crate::model::{Inline, Mark, MarkSpan};
 use crate::style::EditorStyle;
 
@@ -27,6 +27,8 @@ pub(crate) struct TextSpec {
     pub strike: bool,
     /// Ignores marks (code blocks, raw source).
     pub plain: bool,
+    /// Tabular figures (OpenType `tnum`), for table text.
+    pub tabular: bool,
 }
 
 impl TextSpec {
@@ -39,6 +41,7 @@ impl TextSpec {
         hash_color(self.color, h);
         self.strike.hash(h);
         self.plain.hash(h);
+        self.tabular.hash(h);
     }
 
     fn font(&self) -> Font {
@@ -46,6 +49,9 @@ impl TextSpec {
         f.weight = self.weight;
         if self.italic {
             f.style = FontStyle::Italic;
+        }
+        if self.tabular {
+            f.features = gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)]));
         }
         f
     }
@@ -217,8 +223,22 @@ impl TextLayout {
             return 0;
         };
         let layout = &seg.line.unwrapped_layout;
-        let mut offset =
-            (seg.start + layout.closest_index_for_x(x + l.start_x)).clamp(l.start, l.end);
+        let lx = x + l.start_x;
+        let mut ix = layout.closest_index_for_x(lx);
+        // gpui answers the end for any x past the start of the last glyph;
+        // the left half of that glyph belongs before it.
+        if ix == layout.len && ix > 0 {
+            let seg_text = self
+                .text
+                .get(seg.start..seg.start + layout.len)
+                .unwrap_or("");
+            let last = prev_boundary(seg_text, layout.len);
+            let mid = (layout.x_for_index(last) + layout.width) / 2.;
+            if lx < mid {
+                ix = last;
+            }
+        }
+        let mut offset = (seg.start + ix).clamp(l.start, l.end);
         let wrapped = self
             .lines
             .get(line + 1)
@@ -315,6 +335,7 @@ pub(crate) fn build_runs(
     inline: &Inline,
     spec: &TextSpec,
     style: &EditorStyle,
+    extensions: &crate::extension::Extensions,
 ) -> (Vec<TextRun>, Vec<(Range<usize>, Hsla)>) {
     let text = &inline.text;
     let base = TextRun {
@@ -390,14 +411,40 @@ pub(crate) fn build_runs(
                     run.font.family = style.code_font_family.clone();
                     run.color = style.muted_color;
                 }
-                Mark::Custom { id, .. } if *id == WikiLink::MARK => link_look(&mut run, style),
-                Mark::Custom { id, .. } if *id == Tag::MARK => {
-                    if !spec.strike {
-                        run.color = style.tag_color;
+                Mark::Custom { id, .. } => {
+                    let Some(look) = extensions.iter().find_map(|e| e.mark_style(*id)) else {
+                        continue;
+                    };
+                    let color = |c: MarkColor| match c {
+                        MarkColor::Link => style.link_color,
+                        MarkColor::Tag => style.tag_color,
+                        MarkColor::Highlight => style.highlight_color,
+                        MarkColor::Muted => style.muted_color,
+                        MarkColor::Fixed(c) => c,
+                    };
+                    let fg = look.color.map(color);
+                    if let Some(fg) = fg
+                        && !spec.strike
+                    {
+                        run.color = fg;
                     }
-                    weight = weight.max_weight(FontWeight::SEMIBOLD);
+                    if let Some(bg) = look.background {
+                        background = Some(color(bg));
+                    }
+                    if let Some(w) = look.weight {
+                        weight = weight.max_weight(w);
+                    }
+                    if look.italic {
+                        run.font.style = FontStyle::Italic;
+                    }
+                    if look.underline {
+                        run.underline = Some(UnderlineStyle {
+                            thickness: px(1.),
+                            color: Some(fg.unwrap_or(run.color).opacity(0.4)),
+                            wavy: false,
+                        });
+                    }
                 }
-                Mark::Custom { .. } => {}
             }
         }
         run.font.weight = weight;
@@ -460,4 +507,33 @@ pub(crate) fn prev_boundary(text: &str, offset: usize) -> usize {
         .char_indices()
         .next_back()
         .map_or(0, |(ix, _)| ix)
+}
+
+#[cfg(test)]
+mod spec_tests {
+    use super::*;
+
+    #[test]
+    fn tabular_specs_enable_tnum() {
+        let spec = TextSpec {
+            family: "Inter".into(),
+            size: gpui::px(14.),
+            line_height: gpui::px(20.),
+            weight: gpui::FontWeight::NORMAL,
+            italic: false,
+            color: gpui::black(),
+            strike: false,
+            plain: false,
+            tabular: true,
+        };
+        assert_eq!(
+            spec.font().features.tag_value_list(),
+            [("tnum".to_string(), 1)]
+        );
+        let plain = TextSpec {
+            tabular: false,
+            ..spec
+        };
+        assert!(plain.font().features.tag_value_list().is_empty());
+    }
 }

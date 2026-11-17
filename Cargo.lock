@@ -2317,13 +2317,15 @@ dependencies = [
 
 [[package]]
 name = "gpui-markdown-editor"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "criterion",
+ "futures",
  "gpui-component",
  "gpui-pre",
  "gpui-pre-platform",
  "html5ever 0.40.1",
+ "image",
  "indoc",
  "insta",
  "proptest",

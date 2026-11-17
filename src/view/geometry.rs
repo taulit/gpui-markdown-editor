@@ -13,6 +13,7 @@ use crate::model::{BlockId, MarkSpan, TextPos, TextRange};
 use super::LayoutInput;
 use super::layout::{BlockLayout, Decoration, RectKind};
 use super::state::ViewState;
+use super::table_ui::{self, Affordance, TableGeom};
 use super::text::{floor_boundary, prev_boundary};
 
 /// Geometry queries on a [`DocumentView`](super::DocumentView), opened with
@@ -35,6 +36,9 @@ struct LineRef {
     node: usize,
     line: usize,
     rect: Bounds<Pixels>,
+    /// The horizontal extent that counts as this line for hit testing: the
+    /// line itself, or the whole cell for lines in table cells.
+    span: (Pixels, Pixels),
 }
 
 impl<'a> ViewQuery<'a> {
@@ -46,7 +50,7 @@ impl<'a> ViewQuery<'a> {
         Self { state, input, ts }
     }
 
-    fn layout(&mut self, ix: usize) -> Option<Arc<BlockLayout>> {
+    pub(crate) fn layout(&mut self, ix: usize) -> Option<Arc<BlockLayout>> {
         self.state.layout(&self.input, ix, self.ts)
     }
 
@@ -65,6 +69,7 @@ impl<'a> ViewQuery<'a> {
         let top = self.state.top_of(ix);
         let mut out = Vec::new();
         for (n, node) in layout.nodes.iter().enumerate() {
+            let cell = cell_rect(&layout, node.id);
             for line in 0..node.text.lines.len() {
                 let r = node.line_rect(line);
                 out.push(LineRef {
@@ -72,6 +77,7 @@ impl<'a> ViewQuery<'a> {
                     node: n,
                     line,
                     rect: r + point(Pixels::ZERO, top),
+                    span: cell.map_or((r.left(), r.right()), |c| (c.left(), c.right())),
                 });
             }
         }
@@ -94,6 +100,29 @@ impl<'a> ViewQuery<'a> {
         let d = self.state.doc_point(p);
         let ix = self.state.slot_at_y(d.y)?;
         let n = self.state.slots.len();
+        // Inside a table cell the cell wins, whatever is closer elsewhere.
+        if let Some(layout) = self.layout(ix) {
+            let local = d - point(Pixels::ZERO, self.state.top_of(ix));
+            let hit = layout
+                .rects
+                .iter()
+                .find(|(_, kind, r)| *kind == RectKind::Cell && r.contains(&local));
+            if let Some((id, _, _)) = hit {
+                let id = *id;
+                let best = self
+                    .lines_of(ix)
+                    .into_iter()
+                    .filter(|l| layout.nodes[l.node].id == id)
+                    .min_by(|a, b| {
+                        axis_distance(d.y, a.rect.top(), a.rect.bottom())
+                            .partial_cmp(&axis_distance(d.y, b.rect.top(), b.rect.bottom()))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                if let Some(l) = best {
+                    return self.pos_on_line(l, d.x);
+                }
+            }
+        }
         // Blocks without text (rules, images) send the search to neighbours.
         for dist in 0..n {
             let mut best: Option<(Pixels, Pixels, LineRef)> = None;
@@ -106,7 +135,7 @@ impl<'a> ViewQuery<'a> {
                 }
                 for l in self.lines_of(j) {
                     let dy = axis_distance(d.y, l.rect.top(), l.rect.bottom());
-                    let dx = axis_distance(d.x, l.rect.left(), l.rect.right());
+                    let dx = axis_distance(d.x, l.span.0, l.span.1);
                     if best.is_none_or(|(by, bx, _)| (dy, dx) < (by, bx)) {
                         best = Some((dy, dx, l));
                     }
@@ -137,6 +166,116 @@ impl<'a> ViewQuery<'a> {
             .map(|(id, _, _)| *id)
     }
 
+    /// The table affordance under `p`: a "+" bar or handle shown for the
+    /// mouse at `hover` and the caret in `caret`, or a column border.
+    pub fn affordance_at(
+        &mut self,
+        p: Point<Pixels>,
+        hover: Option<Point<Pixels>>,
+        caret: Option<BlockId>,
+    ) -> Option<Affordance> {
+        let d = self.state.doc_point(p);
+        let hover = hover.map(|h| self.state.doc_point(h));
+        for (g, top) in self.tables_near(d.y) {
+            let local = d - point(Pixels::ZERO, top);
+            let hover = hover.map(|h| h - point(Pixels::ZERO, top));
+            if let Some(shown) = table_ui::shown(&g, hover, caret)
+                && let Some((a, _)) = shown.iter().find(|(_, r)| r.contains(&local))
+            {
+                return Some(*a);
+            }
+            if let Some(a) = g.border_at(local) {
+                return Some(a);
+            }
+        }
+        None
+    }
+
+    /// The table whose affordances the mouse at `p` shows, with the cell
+    /// under it.
+    pub fn table_focus_at(
+        &mut self,
+        p: Point<Pixels>,
+    ) -> Option<(BlockId, Option<(usize, usize)>)> {
+        let d = self.state.doc_point(p);
+        self.tables_near(d.y).into_iter().find_map(|(g, top)| {
+            let local = d - point(Pixels::ZERO, top);
+            g.hover_area()
+                .contains(&local)
+                .then(|| (g.table, g.cell_at(local)))
+        })
+    }
+
+    /// The tables of the slot at document height `y` and of its neighbours
+    /// (their bars and handles reach into it), with the top of their slot.
+    fn tables_near(&mut self, y: Pixels) -> Vec<(TableGeom, Pixels)> {
+        let Some(ix) = self.state.slot_at_y(y) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for j in [Some(ix), ix.checked_sub(1), Some(ix + 1)]
+            .into_iter()
+            .flatten()
+        {
+            if j >= self.state.slots.len() {
+                continue;
+            }
+            let Some(layout) = self.layout(j) else {
+                continue;
+            };
+            let top = self.state.top_of(j);
+            out.extend(
+                table_ui::tables(&layout, self.input.document)
+                    .into_iter()
+                    .map(|g| (g, top)),
+            );
+        }
+        out
+    }
+
+    /// The geometry of `table` in window coordinates.
+    pub fn table_geom(&mut self, table: BlockId) -> Option<TableGeom> {
+        let ix = self.state.locate(self.input.document, table)?;
+        let layout = self.layout(ix)?;
+        let mut g = table_ui::tables(&layout, self.input.document)
+            .into_iter()
+            .find(|g| g.table == table)?;
+        let origin = self.state.window_rect(ix, Bounds::default()).origin;
+        g.bounds = g.bounds + origin;
+        for r in &mut g.rows {
+            *r = (r.0 + origin.y, r.1 + origin.y);
+        }
+        for c in &mut g.cols {
+            *c = (c.0 + origin.x, c.1 + origin.x);
+        }
+        Some(g)
+    }
+
+    /// The resize handle of the image block `id` under `p`: whether it is
+    /// the right one, and the image's window bounds.
+    pub fn image_handle_at(
+        &mut self,
+        p: Point<Pixels>,
+        id: BlockId,
+    ) -> Option<(bool, Bounds<Pixels>)> {
+        let ix = self.state.locate(self.input.document, id)?;
+        let layout = self.layout(ix)?;
+        let r = layout
+            .rects
+            .iter()
+            .find(|(r, kind, _)| *r == id && *kind == RectKind::Image)?
+            .2;
+        let r = self.state.window_rect(ix, r);
+        let [left, right] = super::paint::image_handles(r);
+        if right.dilate(px(4.)).contains(&p) {
+            Some((true, r))
+        } else if left.dilate(px(4.)).contains(&p) {
+            Some((false, r))
+        } else {
+            None
+        }
+    }
+
     /// The checklist item whose checkbox is under `p`.
     pub fn checkbox_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
         let d = self.state.doc_point(p);
@@ -146,6 +285,24 @@ impl<'a> ViewQuery<'a> {
         layout.decorations.iter().find_map(|dec| match dec {
             Decoration::Checkbox { id, bounds, .. } if bounds.dilate(px(4.)).contains(&local) => {
                 Some(*id)
+            }
+            _ => None,
+        })
+    }
+
+    /// The attachment paragraph whose row is under `p`, outside its file
+    /// name (where a click places the caret).
+    pub fn attachment_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
+        let d = self.state.doc_point(p);
+        let ix = self.state.slot_at_y(d.y)?;
+        let layout = self.layout(ix)?;
+        let local = d - point(Pixels::ZERO, self.state.top_of(ix));
+        layout.decorations.iter().find_map(|dec| match dec {
+            Decoration::Attachment { id, bounds, .. } if bounds.contains(&local) => {
+                let on_text = layout
+                    .node(*id)
+                    .is_some_and(|(_, n)| n.bounds().contains(&local));
+                (!on_text).then_some(*id)
             }
             _ => None,
         })
@@ -171,6 +328,82 @@ impl<'a> ViewQuery<'a> {
                 .map(|m| (node.id, m.clone()));
         }
         None
+    }
+
+    /// The fold chevron of the top-level heading in slot `ix`, left of its
+    /// first line.
+    fn chevron(&mut self, ix: usize) -> Option<Bounds<Pixels>> {
+        let block = self.input.document.blocks().get(ix)?;
+        if !matches!(block.kind, crate::model::BlockKind::Heading(_))
+            || self.input.hidden.contains(&block.id)
+        {
+            return None;
+        }
+        let layout = self.layout(ix)?;
+        let r = chevron_rect(layout.nodes.first()?.line_rect(0));
+        Some(self.state.window_rect(ix, r))
+    }
+
+    /// The top-level heading whose block is at the height of `p`, with its
+    /// chevron.
+    pub fn heading_row_at(&mut self, p: Point<Pixels>) -> Option<(BlockId, Bounds<Pixels>)> {
+        let ix = self.block_row_at(p)?;
+        let chevron = self.chevron(ix)?;
+        Some((self.input.document.blocks()[ix].id, chevron))
+    }
+
+    /// The visible top-level block at the height of `p`.
+    pub fn block_row_at(&mut self, p: Point<Pixels>) -> Option<usize> {
+        let y = self.state.doc_point(p).y;
+        let ix = self.state.slot_at_y(y)?;
+        let block = self.input.document.blocks().get(ix)?;
+        if self.input.hidden.contains(&block.id) {
+            return None;
+        }
+        let top = self.state.top_of(ix);
+        (y >= top && y < top + self.state.slots[ix].height).then_some(ix)
+    }
+
+    /// The drag handle of the visible top-level block in slot `ix`.
+    pub fn drag_handle(&mut self, ix: usize) -> Option<Bounds<Pixels>> {
+        let layout = self.layout(ix)?;
+        let r = handle_rect(&layout)?;
+        Some(self.state.window_rect(ix, r))
+    }
+
+    /// The slot whose drag handle is at `p`.
+    pub fn drag_handle_at(&mut self, p: Point<Pixels>) -> Option<usize> {
+        let ix = self.block_row_at(p)?;
+        let r = self.drag_handle(ix)?;
+        r.dilate(px(3.)).contains(&p).then_some(ix)
+    }
+
+    /// Where a dragged block would be dropped with the mouse at `p`: the
+    /// index of the top-level block it would be inserted before (the
+    /// number of blocks for the end). Never inside a folded section.
+    pub fn drop_gap_at(&mut self, p: Point<Pixels>) -> usize {
+        let n = self.state.slots.len();
+        let y = self.state.doc_point(p).y;
+        let Some(ix) = self.state.slot_at_y(y) else {
+            return 0;
+        };
+        let top = self.state.top_of(ix);
+        let mut gap = if y > top + self.state.slots[ix].height / 2. {
+            ix + 1
+        } else {
+            ix
+        };
+        let blocks = self.input.document.blocks();
+        while gap < n && self.input.hidden.contains(&blocks[gap].id) {
+            gap += 1;
+        }
+        gap
+    }
+
+    /// The heading whose fold chevron is at `p`.
+    pub fn fold_toggle_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
+        let (id, r) = self.heading_row_at(p)?;
+        r.dilate(px(4.)).contains(&p).then_some(id)
     }
 
     /// The caret rectangle at `pos`: the caret width wide, one line high.
@@ -206,7 +439,6 @@ impl<'a> ViewQuery<'a> {
     }
 
     /// The bounds of a block, nested block or cell.
-    #[allow(dead_code)] // places the format bar and popovers of the next phase
     pub fn block_bounds(&mut self, id: BlockId) -> Option<Bounds<Pixels>> {
         let ix = self.state.locate(self.input.document, id)?;
         let layout = self.layout(ix)?;
@@ -234,11 +466,15 @@ impl<'a> ViewQuery<'a> {
             .text
             .line_for_offset(floor_boundary(&node.text.text, pos.offset));
         let top = self.state.top_of(ix);
+        let r = node.line_rect(line);
+        let span =
+            cell_rect(&layout, node.id).map_or((r.left(), r.right()), |c| (c.left(), c.right()));
         Some(LineRef {
             slot: ix,
             node: n,
             line,
-            rect: node.line_rect(line) + point(Pixels::ZERO, top),
+            rect: r + point(Pixels::ZERO, top),
+            span,
         })
     }
 
@@ -278,8 +514,8 @@ impl<'a> ViewQuery<'a> {
                         if (lt - bt).abs() > eps {
                             if down { lt < bt } else { lt > bt }
                         } else {
-                            axis_distance(x, l.rect.left(), l.rect.right())
-                                < axis_distance(x, b.rect.left(), b.rect.right())
+                            axis_distance(x, l.span.0, l.span.1)
+                                < axis_distance(x, b.span.0, b.span.1)
                         }
                     }
                 };
@@ -452,6 +688,15 @@ impl<'a> ViewQuery<'a> {
     }
 }
 
+/// The rectangle of the table cell `id`, if it is one.
+fn cell_rect(layout: &BlockLayout, id: BlockId) -> Option<Bounds<Pixels>> {
+    layout
+        .rects
+        .iter()
+        .find(|(r, kind, _)| *r == id && *kind == RectKind::Cell)
+        .map(|(_, _, b)| *b)
+}
+
 fn axis_distance(v: Pixels, lo: Pixels, hi: Pixels) -> Pixels {
     if v < lo {
         lo - v
@@ -463,6 +708,28 @@ fn axis_distance(v: Pixels, lo: Pixels, hi: Pixels) -> Pixels {
 }
 
 /// The word segment around `offset` (UAX #29 word bounds).
+/// The chevron left of a heading whose first line is `line` (relative to
+/// the block).
+pub(crate) fn chevron_rect(line: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds::new(
+        point(px(-26.), line.center().y - px(9.)),
+        size(px(18.), px(18.)),
+    )
+}
+
+/// The drag handle of a block layout, left of its first line (or its top
+/// for blocks without text), relative to the block.
+pub(crate) fn handle_rect(layout: &BlockLayout) -> Option<Bounds<Pixels>> {
+    let center = match layout.nodes.first() {
+        Some(node) => node.line_rect(0).center().y,
+        None => layout.rects.first()?.2.top() + px(12.),
+    };
+    Some(Bounds::new(
+        point(px(-46.), center - px(9.)),
+        size(px(14.), px(18.)),
+    ))
+}
+
 pub(crate) fn word_at(text: &str, offset: usize) -> Range<usize> {
     let is_word = |s: &str| s.chars().any(char::is_alphanumeric);
     let mut prev: Option<Range<usize>> = None;

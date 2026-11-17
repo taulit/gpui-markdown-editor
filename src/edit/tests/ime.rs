@@ -110,7 +110,7 @@ fn a_commit_with_the_preedit_text_adds_no_entry() {
     assert_eq!(state.markdown(), "xa\n");
     assert!(state.undo());
     assert_eq!(state.markdown(), "x\n");
-    assert!(!state.can_undo());
+    assert!(!state.history.can_undo());
 }
 
 #[test]
@@ -122,12 +122,12 @@ fn a_cancelled_composition_leaves_no_entry() {
     state.replace_and_mark_utf16(None, "", None, clock.now());
     state.unmark();
     assert_eq!(state.markdown(), "x\n");
-    assert!(!state.can_undo());
+    assert!(!state.history.can_undo());
 
     let mut state = ed("x‸\n");
     state.replace_and_mark_utf16(None, "ni", None, clock.now());
     state.replace_text_in_range_utf16(None, "", clock.now());
     assert_eq!(state.markdown(), "x\n");
-    assert!(!state.can_undo());
+    assert!(!state.history.can_undo());
     check_invariants(&state).unwrap();
 }

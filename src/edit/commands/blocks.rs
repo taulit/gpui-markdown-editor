@@ -302,6 +302,7 @@ impl EditorState {
     pub(crate) fn move_block(&mut self, down: bool) -> bool {
         let mut ids = match &self.selection {
             Selection::Node(id) => vec![*id],
+            Selection::Cells { .. } => Vec::new(),
             Selection::Text { .. } | Selection::All => self.selected_roots(),
         };
         if ids.is_empty() {
@@ -353,6 +354,25 @@ impl EditorState {
         })
     }
 
+    /// Moves the top-level blocks `from..=to` (with their children) so that
+    /// they stand before top-level block `gap` (`gap` = number of blocks:
+    /// to the end). One undo step. `false` if they would not move.
+    pub(crate) fn move_top_blocks(&mut self, from: usize, to: usize, gap: usize) -> bool {
+        let n = self.doc.blocks.len();
+        if from > to || to >= n || gap > n || (from..=to + 1).contains(&gap) {
+            return false;
+        }
+        let ids: Vec<BlockId> = self.doc.blocks[from..=to].iter().map(|b| b.id).collect();
+        self.transact(EditKind::Other, None, "", move |tr, sel| {
+            for (k, id) in ids.into_iter().enumerate() {
+                // `index` counts after the block was taken out.
+                let index = if gap < from { gap + k } else { gap - 1 };
+                tr.move_block(id, None, index)?;
+            }
+            Ok(sel.clone())
+        })
+    }
+
     /// The block new blocks are inserted after: the block at the end of the
     /// selection, or the table of a cell.
     fn insertion_anchor(&self) -> Option<BlockId> {
@@ -360,6 +380,7 @@ impl EditorState {
             Selection::Node(id) => return Some(*id),
             Selection::All => return self.doc.blocks.last().map(|b| b.id),
             Selection::Text { .. } => self.ordered()?.1,
+            Selection::Cells { head, .. } => return self.cell_at(*head).map(|at| at.table),
         };
         match self.locate(pos.block)? {
             Loc::Block(_) => Some(pos.block),
@@ -389,6 +410,46 @@ impl EditorState {
         })
     }
 
+    /// Inserts a paragraph that is only a link to `url` showing `name` (an
+    /// attachment row) below the block at the caret, with the caret at its
+    /// end.
+    pub(crate) fn insert_attachment(&mut self, name: &str, url: &str) -> bool {
+        let Some(anchor) = self.insertion_anchor() else {
+            return false;
+        };
+        if name.is_empty() || url.is_empty() {
+            return false;
+        }
+        let content = Inline {
+            text: name.to_string(),
+            marks: vec![crate::model::MarkSpan {
+                range: 0..name.len(),
+                mark: crate::model::Mark::Link {
+                    url: url.to_string().into(),
+                    title: None,
+                },
+            }],
+        };
+        let end = name.len();
+        self.transact(EditKind::Other, None, "", move |tr, _| {
+            let block = tr.new_block(BlockKind::Paragraph, content);
+            let new = block.id;
+            let anchor_block = tr.block(anchor)?;
+            let reuse = anchor_block.kind == BlockKind::Paragraph
+                && anchor_block.content.text.is_empty()
+                && anchor_block.children.is_empty();
+            if reuse {
+                tr.insert_before(anchor, block)?;
+            } else {
+                tr.insert_after(anchor, block)?;
+            }
+            Ok(Selection::caret(TextPos {
+                block: new,
+                offset: end,
+            }))
+        })
+    }
+
     pub(crate) fn insert_rule(&mut self) -> bool {
         self.insert_node_block(BlockKind::Rule)
     }
@@ -400,6 +461,24 @@ impl EditorState {
             title: None,
             width: None,
         }))
+    }
+
+    /// Sets the display width of image block `id` (written as
+    /// `![alt|width](src)`), or removes it.
+    pub(crate) fn set_image_width(&mut self, id: BlockId, width: Option<u32>) -> bool {
+        let Some(BlockKind::Image(data)) = self.doc.block(id).map(|b| b.kind.clone()) else {
+            return false;
+        };
+        if data.width == width {
+            return false;
+        }
+        self.transact(EditKind::Other, None, "", move |tr, sel| {
+            tr.step(Step::SetAttr {
+                block: id,
+                attr: Attr::Image(ImageData { width, ..data }),
+            })?;
+            Ok(sel.clone())
+        })
     }
 
     /// Inserts an empty table and puts the caret into its first cell.

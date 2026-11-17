@@ -109,6 +109,7 @@ pub(super) fn caret(state: &EditorState) -> String {
             format!("<node {kind}>")
         }
         Selection::All => "<all>".to_string(),
+        Selection::Cells { .. } => "<cells>".to_string(),
         Selection::Text { anchor, head } => {
             let text = state.text_of(head.block).expect("caret node").text.clone();
             let mut marks = vec![(head.offset, CARET)];
@@ -269,6 +270,11 @@ pub(super) fn check_invariants(state: &EditorState) -> Result<(), String> {
             }
         }
         Selection::All => {}
+        Selection::Cells { anchor, head } => {
+            if state.cell_rect(*anchor, *head).is_none() {
+                return Err("cell rectangle outside one table".into());
+            }
+        }
     }
     if let Some((node, range)) = &state.marked {
         let inline = state.text_of(*node).ok_or("marked node missing")?;

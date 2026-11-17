@@ -1,10 +1,13 @@
 //! The editor entity.
 
+mod drag;
 mod input;
 mod keys;
 mod mouse;
+mod table;
 #[cfg(test)]
 mod tests;
+mod ui;
 
 use std::fmt;
 use std::ops::Range;
@@ -12,7 +15,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     App, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, Styled as _, Subscription, Task, Window, div,
+    ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Subscription,
+    Task, Window, div,
 };
 use gpui_component::scroll::Scrollbar;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -27,7 +31,7 @@ use crate::meta::DocMeta;
 use crate::model::{Block, BlockId, BlockKind, Document, TextPos, TextRange};
 use crate::options::EditorOptions;
 use crate::style::EditorStyle;
-use crate::view::{DocumentElement, DocumentView, LayoutInput};
+use crate::view::{ColumnWidths, DocumentElement, DocumentView, LayoutInput};
 
 /// How long the caret stays on and off while blinking.
 const BLINK_INTERVAL: Duration = Duration::from_millis(530);
@@ -88,6 +92,12 @@ pub struct MarkdownEditor {
     saved: u64,
     style: EditorStyle,
     meta: DocMeta,
+    /// The column widths of `meta`, by table id, so that they stay with
+    /// their table when tables before it are added or removed.
+    column_widths: ColumnWidths,
+    /// The widths of `column_widths` by the cells of their columns, so
+    /// that they follow structure edits and their undo.
+    width_records: table::WidthRecords,
     highlights: Vec<TextRange>,
     /// Layout and scroll state of the rendered document.
     view: DocumentView,
@@ -97,6 +107,26 @@ pub struct MarkdownEditor {
     blink_epoch: usize,
     blink: Option<Task<()>>,
     drag: Option<mouse::Drag>,
+    /// The mouse position while it is over the document.
+    hover: Option<gpui::Point<Pixels>>,
+    table_menu: Option<table::TableMenu>,
+    column_drag: Option<table::ColumnDrag>,
+    image_drag: Option<mouse::ImageDrag>,
+    find: Option<ui::find::FindBar>,
+    slash: Option<ui::slash::SlashMenu>,
+    completion: Option<ui::complete::CompletionMenu>,
+    prompt: Option<ui::link::LinkPrompt>,
+    /// The style popover of the format bar is open.
+    style_menu: bool,
+    /// Folded top-level headings, and the top-level blocks they hide.
+    folded: std::collections::HashSet<BlockId>,
+    hidden: std::collections::HashSet<BlockId>,
+    /// The selection head after the last change, to tell the direction of
+    /// a caret move into a folded section.
+    last_head: Option<TextPos>,
+    block_drag: Option<drag::BlockDrag>,
+    /// The query of the find bar when it was closed.
+    last_query: String,
     _subscriptions: [Subscription; 2],
 }
 
@@ -109,6 +139,10 @@ impl MarkdownEditor {
     /// bindings if [`init`] was not called yet.
     pub fn new(window: &mut Window, cx: &mut Context<Self>, mut options: EditorOptions) -> Self {
         init(cx);
+        // The parts are compiled in, but only offered with the `ui` feature.
+        if cfg!(not(feature = "ui")) {
+            options.ui = crate::options::UiParts::NONE;
+        }
         let extensions = Extensions::new(std::mem::take(&mut options.extensions));
         let focus = cx.focus_handle();
         let subscriptions = [
@@ -136,6 +170,8 @@ impl MarkdownEditor {
             saved,
             style: EditorStyle::from_theme(cx),
             meta: DocMeta::default(),
+            column_widths: ColumnWidths::default(),
+            width_records: Default::default(),
             highlights: Vec::new(),
             view: DocumentView::new(),
             goal_x: None,
@@ -143,6 +179,20 @@ impl MarkdownEditor {
             blink_epoch: 0,
             blink: None,
             drag: None,
+            hover: None,
+            table_menu: None,
+            column_drag: None,
+            image_drag: None,
+            find: None,
+            slash: None,
+            completion: None,
+            prompt: None,
+            style_menu: false,
+            folded: Default::default(),
+            hidden: Default::default(),
+            last_head: None,
+            block_drag: None,
+            last_query: String::new(),
             _subscriptions: subscriptions,
         }
     }
@@ -163,7 +213,14 @@ impl MarkdownEditor {
         self.highlights.clear();
         self.goal_x = None;
         self.drag = None;
+        self.table_menu = None;
+        self.column_widths = widths_by_id(&self.state.doc, &self.meta);
+        self.record_all_widths();
+        self.folded.clear();
+        self.hidden.clear();
+        self.last_head = None;
         self.view.reset();
+        self.load_folds(cx);
         cx.notify();
     }
 
@@ -195,9 +252,16 @@ impl MarkdownEditor {
     ///
     /// Changes made by a command are part of the undo history and emit
     /// [`EditorEvent::Changed`] like edits made by the user.
-    /// [`Command::FoldHeading`] and [`Command::OpenFind`] have no effect yet.
     pub fn command(&mut self, cmd: Command, window: &mut Window, cx: &mut Context<Self>) {
         match cmd {
+            Command::OpenFind => {
+                self.open_find(window, cx);
+                return;
+            }
+            Command::FoldHeading => {
+                self.fold_at_caret(window, cx);
+                return;
+            }
             // The command selects the whole document; Ctrl+A grows the
             // selection from the block to the document.
             Command::SelectAll => {
@@ -217,37 +281,23 @@ impl MarkdownEditor {
     /// nested blocks and table cells. Matches do not overlap and never span
     /// two blocks. An empty query finds nothing.
     pub fn find(&self, query: &str) -> Vec<TextRange> {
-        let mut ranges = Vec::new();
-        if query.is_empty() {
-            return ranges;
-        }
-        let needle = query.to_lowercase();
-        visit_texts(self.state.doc.blocks(), &mut |block, text| {
-            ranges.extend(
-                find_ignore_case(text, &needle)
-                    .into_iter()
-                    .map(|range| TextRange {
-                        start: TextPos {
-                            block,
-                            offset: range.start,
-                        },
-                        end: TextPos {
-                            block,
-                            offset: range.end,
-                        },
-                    }),
-            );
-        });
-        ranges
+        self.find_matches(query, false)
     }
 
     /// Highlights the given ranges, for example the hits of a search run by
     /// the host. Replaces the ranges set before. Pass an empty list to remove
     /// the highlights.
     ///
+    /// The first range is scrolled into view (the caret stays where it
+    /// is), unfolding a folded section that hides it.
+    ///
     /// Ranges belong to the content they were found in. They are dropped by
     /// [`set_markdown`](Self::set_markdown).
     pub fn highlight(&mut self, ranges: Vec<TextRange>, cx: &mut Context<Self>) {
+        if let Some(first) = ranges.first() {
+            self.unfold_around(first.start.block, cx);
+            self.view.request_reveal(*first);
+        }
         self.highlights = ranges;
         cx.notify();
     }
@@ -294,8 +344,32 @@ impl MarkdownEditor {
     /// [`set_markdown`](Self::set_markdown). Does not emit
     /// [`EditorEvent::MetaChanged`].
     pub fn set_meta(&mut self, meta: DocMeta, cx: &mut Context<Self>) {
+        self.column_widths = widths_by_id(&self.state.doc, &meta);
         self.meta = meta;
+        self.record_all_widths();
+        self.load_folds(cx);
+        self.leave_hidden(false);
+        self.state.take_changes();
         cx.notify();
+    }
+
+    /// Brings [`DocMeta::column_widths`] in line with the widths by table
+    /// id (tables may have moved, appeared or gone, columns may have been
+    /// added, moved or removed) and emits [`EditorEvent::MetaChanged`] if
+    /// that changed it.
+    pub(crate) fn sync_meta(&mut self, cx: &mut Context<Self>) {
+        self.derive_widths();
+        let widths: std::collections::BTreeMap<usize, Vec<f32>> = tables(&self.state.doc)
+            .into_iter()
+            .enumerate()
+            .filter_map(|(ordinal, id)| Some((ordinal, self.column_widths.get(&id)?.clone())))
+            .collect();
+        self.column_widths
+            .retain(|id, _| self.state.doc.block(*id).is_some());
+        if widths != self.meta.column_widths {
+            self.meta.column_widths = widths;
+            cx.emit(EditorEvent::MetaChanged);
+        }
     }
 
     /// The document model of the current content, for read access: outlines,
@@ -314,12 +388,34 @@ impl MarkdownEditor {
         cx.notify();
     }
 
+    /// Selects the rectangle between two cells of a table, or the block
+    /// `anchor` as a whole if `head` is `None`, for screenshots.
+    #[doc(hidden)]
+    pub fn __select_cells_or_node(
+        &mut self,
+        anchor: BlockId,
+        head: Option<BlockId>,
+        cx: &mut Context<Self>,
+    ) {
+        let selection = match head {
+            Some(head) => Selection::Cells { anchor, head },
+            None => Selection::Node(anchor),
+        };
+        self.state.set_selection(selection);
+        self.state.take_changes();
+        cx.notify();
+    }
+
     fn layout_input(&self) -> LayoutInput<'_> {
         LayoutInput {
             document: &self.state.doc,
             style: &self.style,
             first_line_is_title: self.options.first_line_is_title,
             max_width: self.options.max_width,
+            column_widths: &self.column_widths,
+            image_preview: self.image_drag.as_ref().map(|d| (d.id, d.width)),
+            hidden: &self.hidden,
+            resolve_src: self.options.resolve_src.as_ref(),
         }
     }
 
@@ -328,6 +424,10 @@ impl MarkdownEditor {
         let pos = match &self.state.selection {
             Selection::Text { head, .. } => *head,
             Selection::All => return,
+            Selection::Cells { head, .. } => TextPos {
+                block: *head,
+                offset: 0,
+            },
             Selection::Node(id) => TextPos {
                 block: *id,
                 offset: 0,
@@ -343,16 +443,38 @@ impl MarkdownEditor {
     /// events, caret visibility. `keep_goal` keeps the goal column of
     /// vertical movement.
     fn after_change(&mut self, keep_goal: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let changes = self.state.take_changes();
+        let mut changes = self.state.take_changes();
+        // Any edit can add or remove a heading, which shifts the ordinals:
+        // a linear pass, only while something is folded.
+        if changes.content && !self.folded.is_empty() {
+            self.sync_folds(cx);
+        }
+        if !self.hidden.is_empty() {
+            self.leave_hidden(true);
+            changes.selection |= self.state.take_changes().selection;
+        }
+        self.last_head = ui::fold::probe(&self.state.selection);
         if !keep_goal {
             self.goal_x = None;
+        }
+        if self.slash.is_some() && (changes.content || changes.selection) {
+            self.refresh_slash();
+        }
+        if self.completion.is_some() && (changes.content || changes.selection) {
+            self.refresh_completion();
         }
         if changes.content || changes.selection {
             self.reveal_selection();
             self.restart_blink(cx);
         }
+        if changes.structure && !self.width_records.is_empty() {
+            self.sync_meta(cx);
+        }
         if changes.content {
             self.view.invalidate(changes.blocks);
+            if self.find.is_some() {
+                self.refresh_find(false, cx);
+            }
             window.notify_text_input_changed(&self.focus);
             cx.emit(EditorEvent::Changed);
         }
@@ -410,14 +532,40 @@ impl Render for MarkdownEditor {
                 self.blink = None;
             }
         }
-        let root = div()
-            .key_context(keys::CONTEXT)
+        let document = div()
+            .id("markdown-editor")
+            .role(gpui::Role::Group)
+            .aria_label("Markdown editor")
+            .key_context({
+                let mut context = gpui::KeyContext::default();
+                context.add(keys::CONTEXT);
+                if self.state.current_cell().is_some() {
+                    context.add(keys::TABLE_CONTEXT);
+                }
+                context
+            })
             .track_focus(&self.focus)
-            .relative()
-            .size_full();
-        keys::bind_actions(root, cx)
+            .size_full()
+            .on_drop(
+                cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
+                    let position = window.mouse_position();
+                    this.drop_paths(paths.paths(), position, window, cx);
+                }),
+            );
+        let document = keys::bind_actions(document, cx)
             .child(DocumentElement::new(self.view.clone(), cx.entity()))
             .child(Scrollbar::vertical(&self.view))
+            .children(self.render_table_menu(cx));
+        div()
+            .relative()
+            .size_full()
+            .child(document)
+            .children(self.render_format_bar(cx))
+            .children(self.render_find(cx))
+            .children(self.render_slash(window, cx))
+            .children(self.render_completion(window, cx))
+            .children(self.render_prompt(window, cx))
+            .children(self.render_link_bubble(window, cx))
     }
 }
 
@@ -446,6 +594,36 @@ fn visit_texts(blocks: &[Block], f: &mut impl FnMut(BlockId, &str)) {
         }
         visit_texts(block.children(), f);
     }
+}
+
+/// The ids of the blocks matching `pred`, nested ones included, in
+/// document order.
+fn ids_where(blocks: &[Block], pred: &impl Fn(&Block) -> bool) -> Vec<BlockId> {
+    let mut out = Vec::new();
+    fn walk(blocks: &[Block], pred: &impl Fn(&Block) -> bool, out: &mut Vec<BlockId>) {
+        for block in blocks {
+            if pred(block) {
+                out.push(block.id());
+            }
+            walk(block.children(), pred, out);
+        }
+    }
+    walk(blocks, pred, &mut out);
+    out
+}
+
+/// The tables of `doc` in document order (the ordinals of [`DocMeta`]).
+fn tables(doc: &Document) -> Vec<BlockId> {
+    ids_where(doc.blocks(), &|b| matches!(b.kind(), BlockKind::Table(_)))
+}
+
+/// The column widths of `meta` keyed by the ids of the tables of `doc`.
+fn widths_by_id(doc: &Document, meta: &DocMeta) -> ColumnWidths {
+    tables(doc)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(ordinal, id)| Some((id, meta.column_widths.get(&ordinal)?.clone())))
+        .collect()
 }
 
 /// Finds the non-overlapping occurrences of `needle` in `text`, ignoring case.

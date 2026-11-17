@@ -53,7 +53,8 @@ impl EditorState {
     /// Runs the first input rule that matches at the caret. Returns `true`
     /// if one fired.
     pub(crate) fn apply_input_rules(&mut self) -> bool {
-        let fired = self.block_input_rule() || self.inline_input_rule();
+        let fired =
+            self.block_input_rule() || self.inline_input_rule() || self.extension_input_rule();
         if fired {
             self.rule_armed = true;
         }
@@ -161,6 +162,84 @@ impl EditorState {
                 marks.retain(|m| !inline_ops::same_kind(m, &mark));
                 self.pending_marks = Some(marks);
             }
+        }
+        applied
+    }
+}
+
+impl EditorState {
+    /// The input rules of the document's extensions, see
+    /// [`Extension::input_rule`](crate::Extension::input_rule).
+    fn extension_input_rule(&mut self) -> bool {
+        if self.doc.extensions.is_empty() {
+            return false;
+        }
+        let Some(head) = self.selection.head().filter(|_| self.selection.is_caret()) else {
+            return false;
+        };
+        let Some(loc) = self.locate(head.block) else {
+            return false;
+        };
+        let literal = !loc.is_cell()
+            && order::block_at(&self.doc.blocks, loc.block_path())
+                .is_none_or(|b| order::is_literal(&b.kind));
+        if literal {
+            return false;
+        }
+        let Some(inline) = order::inline_at(&self.doc, &loc) else {
+            return false;
+        };
+        let Some(before) = inline.text.get(..head.offset) else {
+            return false;
+        };
+        let found = self.doc.extensions.iter().find_map(|e| {
+            let m = e.input_rule(before)?;
+            let ok = m.range.start < m.range.end
+                && m.range.end <= before.len()
+                && before.is_char_boundary(m.range.start)
+                && before.is_char_boundary(m.range.end)
+                && !m.text.is_empty();
+            ok.then_some(m)
+        });
+        let Some(m) = found else {
+            return false;
+        };
+        let touches = |span: &crate::model::MarkSpan| {
+            span.range.start < m.range.end && m.range.start < span.range.end
+        };
+        // Not in code or raw source, and not again over a finished match.
+        let blocked = inline.marks.iter().any(|span| {
+            touches(span)
+                && (matches!(span.mark, Mark::Code | Mark::Raw | Mark::Link { .. })
+                    || inline_ops::same_kind(&span.mark, &m.mark))
+        });
+        if blocked {
+            return false;
+        }
+        let node = head.block;
+        let shift = m.range.len() as isize - m.text.len() as isize;
+        let caret = (head.offset as isize - shift).max(0) as usize;
+        let len = m.text.len();
+        let replacement = Inline {
+            marks: vec![crate::model::MarkSpan {
+                range: 0..len,
+                mark: m.mark.clone(),
+            }],
+            text: m.text,
+        };
+        let range = m.range;
+        let applied = self.transact(EditKind::Other, None, "", move |tr, _| {
+            tr.replace(node, range, replacement)?;
+            Ok(Selection::caret(TextPos {
+                block: node,
+                offset: caret,
+            }))
+        });
+        if applied {
+            let mark = m.mark;
+            let mut marks = self.caret_marks();
+            marks.retain(|x| !inline_ops::same_kind(x, &mark));
+            self.pending_marks = Some(marks);
         }
         applied
     }

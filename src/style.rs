@@ -137,8 +137,8 @@ impl EditorStyle {
     /// [`Theme`](gpui_component::Theme).
     ///
     /// The accent is the theme's `primary` color: it fills ticked checkboxes,
-    /// draws the quote bar and tints highlights. Links and tags use the
-    /// theme's `link` color.
+    /// draws the quote bar, tints highlights and colors links, wiki links
+    /// and tags.
     pub fn from_theme(cx: &App) -> Self {
         let theme = cx.theme();
         let accent = theme.primary;
@@ -196,8 +196,8 @@ impl EditorStyle {
                 left: px(12.),
             },
 
-            link_color: theme.link,
-            tag_color: theme.link,
+            link_color: accent,
+            tag_color: accent,
             highlight_color: accent.opacity(0.25),
             selection_color: accent.opacity(0.28),
             caret_color: theme.caret,

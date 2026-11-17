@@ -7,7 +7,7 @@ use crate::edit::ops::Abort;
 use crate::edit::order::{self, Loc};
 use crate::edit::state::EditorState;
 use crate::edit::step::{Step, TableOp};
-use crate::model::{Align, BlockId, BlockKind, TableData, TextPos};
+use crate::model::{Align, Block, BlockId, BlockKind, Inline, TableData, TextPos};
 
 /// Where the caret's cell is.
 #[derive(Clone, Copy, Debug)]
@@ -39,7 +39,6 @@ impl EditorState {
     }
 
     /// The cell under the caret.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn current_cell(&self) -> Option<CellAt> {
         self.cell_at(self.selection.head()?.block)
     }
@@ -52,7 +51,8 @@ impl EditorState {
         }
     }
 
-    fn cell_id(&self, table: BlockId, row: usize, col: usize) -> Option<BlockId> {
+    /// The id of cell (`row`, `col`) of `table`.
+    pub(crate) fn cell_id(&self, table: BlockId, row: usize, col: usize) -> Option<BlockId> {
         Some(self.table_data(table)?.rows.get(row)?.get(col)?.id)
     }
 
@@ -114,7 +114,6 @@ impl EditorState {
     }
 
     /// Inserts an empty row above or below the caret's row.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_insert_row(&mut self, below: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -123,7 +122,6 @@ impl EditorState {
     }
 
     /// Inserts an empty column left or right of the caret's column.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_insert_column(&mut self, right: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -152,7 +150,6 @@ impl EditorState {
 
     /// Removes the caret's row. The last row cannot be removed; delete the
     /// table as a node instead.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_remove_row(&mut self) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -181,7 +178,6 @@ impl EditorState {
     }
 
     /// Removes the caret's column. The last column cannot be removed.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_remove_column(&mut self) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -210,7 +206,6 @@ impl EditorState {
     }
 
     /// Moves the caret's row up or down by one.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_move_row(&mut self, down: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -233,7 +228,6 @@ impl EditorState {
     }
 
     /// Moves the caret's column left or right by one.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_move_column(&mut self, right: bool) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -256,7 +250,6 @@ impl EditorState {
     }
 
     /// Sets the alignment of the caret's column.
-    #[allow(dead_code)] // table editing UI of the next phase
     pub(crate) fn table_set_align(&mut self, align: Align) -> bool {
         let Some(at) = self.current_cell() else {
             return false;
@@ -279,4 +272,112 @@ impl EditorState {
             Ok(sel.clone())
         })
     }
+
+    /// The cells of the rectangle spanned by `anchor` and `head`, row by
+    /// row (rows shorter than the rectangle contribute fewer cells), with
+    /// the first selected column.
+    pub(crate) fn cell_rect(&self, anchor: BlockId, head: BlockId) -> Option<CellRect> {
+        let (a, h) = (self.cell_at(anchor)?, self.cell_at(head)?);
+        if a.table != h.table {
+            return None;
+        }
+        let data = self.table_data(a.table)?;
+        let rows = a.row.min(h.row)..a.row.max(h.row) + 1;
+        let cols = a.col.min(h.col)..a.col.max(h.col) + 1;
+        Some(CellRect {
+            table: a.table,
+            rows: rows.clone(),
+            cols: cols.clone(),
+            cells: data.rows[rows]
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .enumerate()
+                        .filter(|(c, _)| cols.contains(c))
+                        .map(|(_, cell)| cell.id)
+                        .collect()
+                })
+                .collect(),
+        })
+    }
+
+    /// The selected rectangle as a table of its own, for the clipboard. Its
+    /// first row is the header.
+    pub(crate) fn cells_block(&self, anchor: BlockId, head: BlockId) -> Option<Block> {
+        let rect = self.cell_rect(anchor, head)?;
+        let data = self.table_data(rect.table)?;
+        let rows = data.rows[rect.rows.clone()]
+            .iter()
+            .map(|row| {
+                rect.cols
+                    .clone()
+                    .map(|c| {
+                        row.get(c).cloned().unwrap_or_else(|| crate::model::Cell {
+                            id: BlockId(u64::MAX),
+                            content: Inline::default(),
+                        })
+                    })
+                    .collect()
+            })
+            .collect();
+        let align = rect
+            .cols
+            .clone()
+            .map(|c| data.align.get(c).copied().unwrap_or_default())
+            .collect();
+        let mut block = crate::edit::ops::new_block(
+            BlockId(self.doc.next_id),
+            BlockKind::Table(TableData { align, rows }),
+            Inline::default(),
+        );
+        block.dirty = true;
+        Some(block)
+    }
+
+    /// Empties the cells of a rectangle in one undo step; the caret goes to
+    /// the start of `anchor`.
+    pub(crate) fn clear_cells(&mut self, anchor: BlockId, head: BlockId) -> bool {
+        let Some(rect) = self.cell_rect(anchor, head) else {
+            return false;
+        };
+        let cells: Vec<(BlockId, usize)> = rect
+            .cells
+            .iter()
+            .flatten()
+            .map(|id| (*id, self.text_of(*id).map_or(0, |i| i.text.len())))
+            .collect();
+        self.transact(EditKind::Other, None, "", move |tr, _| {
+            for (id, len) in cells {
+                tr.replace(id, 0..len, Inline::default())?;
+            }
+            Ok(Selection::caret(TextPos {
+                block: anchor,
+                offset: 0,
+            }))
+        })
+    }
+
+    /// Typing or pasting over a cell rectangle replaces the text of its
+    /// anchor cell only: the rectangle becomes a selection of that text.
+    pub(crate) fn collapse_cells(&mut self) {
+        if let Selection::Cells { anchor, .. } = self.selection {
+            let end = self.end_of(anchor);
+            self.put_selection(Selection::Text {
+                anchor: TextPos {
+                    block: anchor,
+                    offset: 0,
+                },
+                head: end,
+            });
+        }
+    }
+}
+
+/// A rectangle of cells, see [`EditorState::cell_rect`].
+#[derive(Clone, Debug)]
+pub(crate) struct CellRect {
+    pub(crate) table: BlockId,
+    pub(crate) rows: std::ops::Range<usize>,
+    pub(crate) cols: std::ops::Range<usize>,
+    pub(crate) cells: Vec<Vec<BlockId>>,
 }

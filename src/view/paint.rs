@@ -26,7 +26,16 @@ struct TextOp {
 
 enum Overlay {
     Quad(PaintQuad),
-    Check { bounds: Bounds<Pixels>, color: Hsla },
+    Check {
+        bounds: Bounds<Pixels>,
+        color: Hsla,
+    },
+    /// A fold chevron, pointing down when `open`.
+    Chevron {
+        bounds: Bounds<Pixels>,
+        open: bool,
+        color: Hsla,
+    },
 }
 
 /// Everything painted in one frame, in window coordinates.
@@ -34,6 +43,7 @@ enum Overlay {
 pub(crate) struct Frame {
     bounds: Bounds<Pixels>,
     under: Vec<PaintQuad>,
+    images: Vec<(Bounds<Pixels>, Arc<gpui::RenderImage>, Pixels)>,
     texts: Vec<TextOp>,
     over: Vec<Overlay>,
 }
@@ -105,6 +115,44 @@ pub(crate) fn build_frame(
                     align: *align,
                     width: *width,
                 }),
+                Decoration::Image { bounds, src } => {
+                    if let Some(super::images::ImageInfo::Ready { image, .. }) =
+                        state.images.get(src)
+                    {
+                        frame
+                            .images
+                            .push((*bounds + v.origin, image.clone(), style.image_radius));
+                    }
+                }
+                Decoration::Attachment { bounds, icon, .. } => {
+                    frame.under.push(quad(
+                        *bounds + v.origin,
+                        style.code_radius,
+                        style.code_background,
+                        px(1.),
+                        style.table_border_color,
+                        Default::default(),
+                    ));
+                    // A sheet of paper with two lines of text.
+                    let b = *icon + v.origin;
+                    frame.over.push(Overlay::Quad(quad(
+                        b,
+                        px(3.),
+                        transparent_black(),
+                        px(1.5),
+                        style.muted_color,
+                        Default::default(),
+                    )));
+                    for i in 0..2 {
+                        let line = Bounds::new(
+                            point(b.left() + px(4.), b.top() + px(7.) + px(4.) * i as f32),
+                            size(b.size.width - px(8.), px(1.5)),
+                        );
+                        frame
+                            .over
+                            .push(Overlay::Quad(fill(line, style.muted_color)));
+                    }
+                }
                 Decoration::Checkbox {
                     bounds, checked, ..
                 } => {
@@ -153,32 +201,123 @@ pub(crate) fn build_frame(
     }
 
     let doc = input.layout.document;
-    for range in input.highlights {
-        let (Some(a), Some(b)) = (keys.get(&range.start.block), keys.get(&range.end.block)) else {
-            if range.start.block == range.end.block {
+    let caret = input.selection.and_then(Selection::head).map(|p| p.block);
+    for v in &visible {
+        for g in super::table_ui::tables(&v.layout, doc) {
+            let hover = input.hover.map(|h| h - v.origin);
+            let Some(shown) = super::table_ui::shown(&g, hover, caret) else {
                 continue;
+            };
+            for (a, r) in shown {
+                paint_affordance(&mut frame.over, a, r + v.origin, input, style);
             }
-            let ends = [range.start, range.end].map(|p| key_of(state, doc, p.block));
-            if let [Some(a), Some(b)] = ends {
-                paint_range(
-                    &mut frame.under,
-                    &visible,
-                    (a, range.start.offset),
-                    (b, range.end.offset),
-                    style.highlight_color,
-                    false,
-                );
-            }
+        }
+    }
+    for v in &visible {
+        let Some(block) = doc.blocks().get(v.slot) else {
             continue;
         };
-        paint_range(
-            &mut frame.under,
-            &visible,
-            (*a, range.start.offset),
-            (*b, range.end.offset),
-            style.highlight_color,
-            false,
+        let (BlockKind::Heading(_), Some(node)) = (&block.kind, v.layout.nodes.first()) else {
+            continue;
+        };
+        let folded = input.folded.contains(&block.id);
+        let hovered = input
+            .hover
+            .is_some_and(|h| h.y >= v.origin.y && h.y < v.origin.y + v.layout.height);
+        if !folded && !hovered {
+            continue;
+        }
+        let b = super::geometry::chevron_rect(node.line_rect(0)) + v.origin;
+        let on = input.hover.is_some_and(|h| b.dilate(px(4.)).contains(&h));
+        frame.over.push(Overlay::Chevron {
+            bounds: b,
+            open: !folded,
+            color: if on {
+                style.text_color
+            } else {
+                style.muted_color
+            },
+        });
+    }
+
+    // The drag handle of the block under the mouse (or being dragged), and
+    // the line where it would be dropped.
+    for v in &visible {
+        let dragged = input.block_drag.map(|d| d.0) == Some(v.slot);
+        let hovered = input.drag_handles
+            && input.block_drag.is_none()
+            && input
+                .hover
+                .is_some_and(|h| h.y >= v.origin.y && h.y < v.origin.y + v.layout.height);
+        if !(dragged || hovered) || v.layout.height <= Pixels::ZERO {
+            continue;
+        }
+        let Some(r) = super::geometry::handle_rect(&v.layout) else {
+            continue;
+        };
+        let r = r + v.origin;
+        let on = dragged || input.hover.is_some_and(|h| r.dilate(px(3.)).contains(&h));
+        let color = if on {
+            style.muted_color
+        } else {
+            style.faint_color
+        };
+        for row in 0..3 {
+            for col in 0..2 {
+                let c = point(
+                    r.origin.x + px(4. + 6. * col as f32),
+                    r.origin.y + px(4. + 5. * row as f32),
+                );
+                let dot = Bounds::new(c - point(px(1.25), px(1.25)), size(px(2.5), px(2.5)));
+                frame
+                    .over
+                    .push(Overlay::Quad(fill(dot, color).corner_radii(px(1.25))));
+            }
+        }
+    }
+    if let Some((_, Some(gap))) = input.block_drag {
+        let y = state.bounds.origin.y + state.top_of(gap) - scroll;
+        let line = Bounds::new(
+            point(column_x - px(4.), y - px(1.)),
+            size(state.width + px(8.), px(2.)),
         );
+        frame.over.push(Overlay::Quad(
+            fill(line, style.node_selection_color).corner_radii(px(1.)),
+        ));
+    }
+
+    let current = style.node_selection_color.opacity(0.55);
+    let ranges = input
+        .highlights
+        .iter()
+        .map(|r| (r, style.highlight_color))
+        .chain(input.search.iter().map(|r| {
+            let color = if Some(*r) == input.search_current {
+                current
+            } else {
+                style.highlight_color
+            };
+            (r, color)
+        }));
+    for (range, color) in ranges {
+        let ends = match (keys.get(&range.start.block), keys.get(&range.end.block)) {
+            (Some(a), Some(b)) => Some((*a, *b)),
+            _ if range.start.block == range.end.block => None,
+            _ => match [range.start, range.end].map(|p| key_of(state, doc, p.block)) {
+                [Some(a), Some(b)] => Some((a, b)),
+                _ => None,
+            },
+        };
+        if let Some((a, b)) = ends {
+            paint_range(
+                &mut frame.under,
+                &visible,
+                (a, range.start.offset),
+                (b, range.end.offset),
+                color,
+                false,
+            );
+        }
     }
 
     match input.selection {
@@ -244,6 +383,16 @@ pub(crate) fn build_frame(
                 }
             }
         }
+        Some(Selection::Cells { .. }) => {
+            let cells = &input.selected_cells;
+            for v in &visible {
+                for (id, kind, r) in &v.layout.rects {
+                    if *kind == super::layout::RectKind::Cell && cells.contains(id) {
+                        frame.under.push(fill(*r + v.origin, style.selection_color));
+                    }
+                }
+            }
+        }
         Some(Selection::Node(id)) => {
             for v in &visible {
                 if let Some((_, kind, r)) = v.layout.rects.iter().find(|(r, _, _)| r == id) {
@@ -260,6 +409,18 @@ pub(crate) fn build_frame(
                         style.node_selection_color,
                         Default::default(),
                     )));
+                    if *kind == super::layout::RectKind::Image {
+                        for h in image_handles(*r + v.origin) {
+                            frame.over.push(Overlay::Quad(quad(
+                                h,
+                                h.size.width / 2.,
+                                style.node_selection_color,
+                                px(1.5),
+                                gpui::white(),
+                                Default::default(),
+                            )));
+                        }
+                    }
                 }
             }
         }
@@ -278,6 +439,65 @@ pub(crate) fn build_frame(
     }
 
     frame
+}
+
+/// A "+" bar or a row or column handle.
+fn paint_affordance(
+    out: &mut Vec<Overlay>,
+    a: super::table_ui::Affordance,
+    r: Bounds<Pixels>,
+    input: &ViewInput<'_>,
+    style: &crate::style::EditorStyle,
+) {
+    use super::table_ui::Affordance;
+    let hovered = input.hover.is_some_and(|h| r.contains(&h));
+    let open = input.open_handle == Some(a);
+    match a {
+        Affordance::AddRow { .. } | Affordance::AddColumn { .. } => {
+            let bg = if hovered {
+                style.table_border_color
+            } else {
+                style.table_header_background
+            };
+            out.push(Overlay::Quad(fill(r, bg).corner_radii(px(4.))));
+            let c = r.center();
+            let (arm, t) = (px(4.), px(1.5));
+            let color = style.muted_color;
+            out.push(Overlay::Quad(fill(
+                Bounds::new(point(c.x - arm, c.y - t / 2.), size(arm * 2., t)),
+                color,
+            )));
+            out.push(Overlay::Quad(fill(
+                Bounds::new(point(c.x - t / 2., c.y - arm), size(t, arm * 2.)),
+                color,
+            )));
+        }
+        Affordance::RowHandle { .. } | Affordance::ColumnHandle { .. } => {
+            let color = if open {
+                style.node_selection_color
+            } else if hovered {
+                style.muted_color
+            } else {
+                style.faint_color
+            };
+            out.push(Overlay::Quad(
+                fill(r, color.opacity(0.55)).corner_radii(px(3.)),
+            ));
+        }
+        Affordance::ColumnBorder { .. } => {}
+    }
+}
+
+/// The resize handles of a selected image with bounds `r`: pills inside
+/// its left and right edge. The second one is the right handle.
+pub(crate) fn image_handles(r: Bounds<Pixels>) -> [Bounds<Pixels>; 2] {
+    let h = px(40.).min(r.size.height - px(8.)).max(px(8.));
+    let w = px(7.);
+    let y = r.center().y - h / 2.;
+    [
+        Bounds::new(point(r.left() + px(8.), y), size(w, h)),
+        Bounds::new(point(r.right() - px(8.) - w, y), size(w, h)),
+    ]
 }
 
 fn find_node(visible: &[Visible], id: BlockId) -> Option<(&Visible, &super::layout::NodeLayout)> {
@@ -365,6 +585,16 @@ impl Frame {
             for q in &self.under {
                 window.paint_quad(q.clone());
             }
+            for (bounds, image, radius) in &self.images {
+                let _ = window.paint_image(
+                    *bounds,
+                    *bounds,
+                    gpui::Corners::all(*radius),
+                    image.clone(),
+                    0,
+                    false,
+                );
+            }
             for t in &self.texts {
                 if t.origin.y > self.bounds.bottom()
                     || t.origin.y + t.text.height() < self.bounds.top()
@@ -385,6 +615,26 @@ impl Frame {
                         path.move_to(o + point(px(6.5), px(10.8)) * s);
                         path.line_to(o + point(px(9.2), px(13.4)) * s);
                         path.line_to(o + point(px(14.6), px(7.8)) * s);
+                        if let Ok(path) = path.build() {
+                            window.paint_path(path, *color);
+                        }
+                    }
+                    Overlay::Chevron {
+                        bounds,
+                        open,
+                        color,
+                    } => {
+                        let o = bounds.origin;
+                        let pts = if *open {
+                            [(5., 7.), (9., 11.), (13., 7.)]
+                        } else {
+                            [(7., 5.), (11., 9.), (7., 13.)]
+                        };
+                        let mut path = PathBuilder::stroke(px(1.6));
+                        path.move_to(o + point(px(pts[0].0), px(pts[0].1)));
+                        for (x, y) in &pts[1..] {
+                            path.line_to(o + point(px(*x), px(*y)));
+                        }
                         if let Ok(path) = path.build() {
                             window.paint_path(path, *color);
                         }

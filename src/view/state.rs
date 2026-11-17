@@ -72,6 +72,10 @@ pub(crate) struct ViewState {
     tops_dirty: bool,
     blocks: HashMap<BlockId, CachedBlock>,
     texts: TextCache,
+    /// Load states of the images near the viewport, by source.
+    pub images: super::images::ImageStates,
+    /// File sizes of attachments, looked up once per link target.
+    pub attachments: super::layout::AttachmentSizes,
     /// Nested block or cell id -> top-level id, filled by layouts.
     node_top: HashMap<BlockId, BlockId>,
     style: Option<EditorStyle>,
@@ -96,6 +100,8 @@ pub(crate) struct ViewState {
     pub visible: std::ops::Range<usize>,
     /// A range to scroll into view at the next frame.
     pub pending_reveal: Option<crate::model::TextRange>,
+    /// The layout of hidden blocks.
+    empty: Arc<BlockLayout>,
 }
 
 impl Default for ViewState {
@@ -107,6 +113,8 @@ impl Default for ViewState {
             tops_dirty: true,
             blocks: HashMap::new(),
             texts: TextCache::default(),
+            images: Default::default(),
+            attachments: Default::default(),
             node_top: HashMap::new(),
             style: None,
             title: false,
@@ -123,6 +131,12 @@ impl Default for ViewState {
             block_layouts: 0,
             visible: 0..0,
             pending_reveal: None,
+            empty: Arc::new(BlockLayout {
+                height: Pixels::ZERO,
+                nodes: Vec::new(),
+                decorations: Vec::new(),
+                rects: Vec::new(),
+            }),
         }
     }
 }
@@ -214,7 +228,11 @@ impl ViewState {
                 .map(|b| {
                     old.get(&b.id).cloned().unwrap_or_else(|| Slot {
                         id: b.id,
-                        height: estimate_height(b, style, self.width),
+                        height: if input.hidden.contains(&b.id) {
+                            Pixels::ZERO
+                        } else {
+                            estimate_height(b, style, self.width)
+                        },
                         measured: false,
                     })
                 })
@@ -290,7 +308,34 @@ impl ViewState {
         }
     }
 
+    /// See [`DocumentView::reestimate`](super::DocumentView::reestimate).
+    pub fn reestimate(
+        &mut self,
+        doc: &Document,
+        ids: &[BlockId],
+        hidden: &std::collections::HashSet<BlockId>,
+    ) {
+        let Some(style) = self.style.clone() else {
+            return;
+        };
+        for id in ids {
+            let (Some(&ix), Some(block)) = (self.slot_index.get(id), doc.block(*id)) else {
+                continue;
+            };
+            if let Some(slot) = self.slots.get_mut(ix) {
+                slot.height = if hidden.contains(id) {
+                    Pixels::ZERO
+                } else {
+                    estimate_height(block, &style, self.width)
+                };
+                slot.measured = false;
+            }
+        }
+        self.tops_dirty = true;
+    }
+
     /// The layout of top-level block `ix`, from the cache or laid out now.
+    /// A hidden block (in a folded section) gets an empty layout.
     pub fn layout(
         &mut self,
         input: &LayoutInput<'_>,
@@ -298,8 +343,25 @@ impl ViewState {
         ts: &WindowTextSystem,
     ) -> Option<Arc<BlockLayout>> {
         let block = input.document.blocks().get(ix)?;
+        if input.hidden.contains(&block.id) {
+            self.set_height(ix, Pixels::ZERO);
+            return Some(self.empty.clone());
+        }
         let ctx = self.ctx(input.document, ix);
-        let key = block_key(block, ctx, self.width);
+        if let Some(url) = super::layout::attachment_of(block)
+            && !self.attachments.contains_key(url)
+        {
+            let resolver = input.resolve_src.map(|r| &**r as &super::images::Resolve);
+            let size = super::images::file_size(url, resolver);
+            self.attachments.insert(url.clone(), size);
+        }
+        let extras = super::layout::Extras {
+            widths: input.column_widths,
+            images: &self.images,
+            image_preview: input.image_preview,
+            attachments: &self.attachments,
+        };
+        let key = block_key(block, ctx, self.width, extras);
         let frame = self.frame;
         if let Some(cached) = self.blocks.get_mut(&block.id)
             && cached.key == key
@@ -311,6 +373,8 @@ impl ViewState {
         }
         let mut env = LayoutEnv {
             style: input.style,
+            extensions: &input.document.extensions,
+            extras,
             ts,
             texts: &mut self.texts,
             frame,

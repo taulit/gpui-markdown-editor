@@ -18,6 +18,12 @@ Read by other sessions. Keep terse.
   clipboard (Markdown text), input rules, shortcuts, undo/redo. `is_dirty` follows the undo history. Tables render
   read-only, images are placeholders, `FoldHeading`/`OpenFind` do nothing yet. See `CHANGELOG.md`.
 
+- `v0.0.4` (branch `phase/e3-blocks-ui`): table editing (cells, rectangle selection, row/column menus and keys,
+  column widths in `DocMeta`), images (`resolve_src`, `on_image`, resize), attachments (`AttachmentClicked`),
+  find bar, slash menu, format bar, link popover, heading folding (`DocMeta`), block drag, extension hooks
+  (`mark_style`, `input_rule`, `click`, `slash_items`), `completions`, accessibility roles. `MetaChanged` is emitted.
+  Signatures unchanged; additions are listed in `CHANGELOG.md`. Prefer this tag.
+
 ## Done
 
 - E0: repo, toolchain, CI, versions pinned, assumptions verified (`docs/verified.md`).
@@ -26,10 +32,14 @@ Read by other sessions. Keep terse.
 - E2: editing core, rendering element, keyboard, mouse, IME, clipboard, input rules, shortcuts, interaction tests.
   Not done: manual IME check on a desktop (dead keys, Compose, ibus-pinyin); simulated only.
 
+- E3: tables, images, attachments, find, slash menu, format bar, link popover, folding, block drag, extension
+  hooks, accessibility roles. Bug, spec and simplicity reviews done and their findings fixed.
+
 ## Open
 
-- E3: tables, images, paste, drag, slash menu, format bar, find, folding, extensions.
-- E4: benchmarks, docs, README GIF, reviews, tag v0.1.0.
+- E4: benchmarks, docs, README GIF, popup/checkbox motion, reviews, tag v0.1.0.
+- Decisions pending with the user: `EditorOptions::input_rules` (plan says input rules can be switched off, no
+  option exists), `Changed` payload (plan §3 vs §1a), custom inline nodes for extensions, `&#32;` for empty paragraphs.
 
 ## Versions for downstream
 

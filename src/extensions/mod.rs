@@ -12,9 +12,10 @@
 //! assert_eq!(content.marks()[2].mark, Mark::Highlight);
 //! ```
 
-use gpui::SharedString;
+use gpui::{FontWeight, SharedString};
 
-use crate::extension::{Extension, InlineMatch};
+use crate::event::EditorEvent;
+use crate::extension::{Extension, InlineMatch, MarkColor, MarkStyle, SlashEntry};
 use crate::model::{CustomMarkId, Mark};
 
 /// Wiki links: `[[Note]]`, `[[Note|Alias]]`.
@@ -90,6 +91,38 @@ impl Extension for WikiLink {
             _ => None,
         }
     }
+
+    fn mark_style(&self, id: CustomMarkId) -> Option<MarkStyle> {
+        (id == Self::MARK).then(|| MarkStyle::new().color(MarkColor::Link).underline())
+    }
+
+    /// Typing the closing `]]` turns `[[Note]]` into a link.
+    fn input_rule(&self, before: &str) -> Option<InlineMatch> {
+        if !before.ends_with("]]") {
+            return None;
+        }
+        self.parse_inline(before)
+            .pop()
+            .filter(|m| m.range.end == before.len())
+    }
+
+    fn click(&self, mark: &Mark, text: &str) -> Option<EditorEvent> {
+        match mark {
+            Mark::Custom { id, attr } if *id == Self::MARK => Some(EditorEvent::WikiLinkClicked(
+                attr.as_ref().map_or(text.to_string(), |a| a.to_string()),
+            )),
+            _ => None,
+        }
+    }
+
+    fn slash_items(&self) -> Vec<SlashEntry> {
+        vec![SlashEntry {
+            id: "wikilink",
+            label: "Link to note",
+            keywords: &["wiki", "page", "note"],
+            insert: "[[",
+        }]
+    }
 }
 
 /// Tags: `#tag`, `#project/sub`.
@@ -158,6 +191,44 @@ impl Extension for Tag {
             }
             _ => None,
         }
+    }
+
+    fn mark_style(&self, id: CustomMarkId) -> Option<MarkStyle> {
+        (id == Self::MARK).then(|| {
+            MarkStyle::new()
+                .color(MarkColor::Tag)
+                .weight(FontWeight::SEMIBOLD)
+        })
+    }
+
+    /// A tag is marked when the character after it is typed.
+    fn input_rule(&self, before: &str) -> Option<InlineMatch> {
+        let last = before.chars().next_back()?;
+        if last.is_alphanumeric() || matches!(last, '_' | '-' | '/' | '#') {
+            return None;
+        }
+        let body = &before[..before.len() - last.len_utf8()];
+        self.parse_inline(body)
+            .pop()
+            .filter(|m| m.range.end == body.len())
+    }
+
+    fn click(&self, mark: &Mark, text: &str) -> Option<EditorEvent> {
+        match mark {
+            Mark::Custom { id, .. } if *id == Self::MARK => Some(EditorEvent::TagClicked(
+                text.trim_start_matches('#').to_string(),
+            )),
+            _ => None,
+        }
+    }
+
+    fn slash_items(&self) -> Vec<SlashEntry> {
+        vec![SlashEntry {
+            id: "tag",
+            label: "Tag",
+            keywords: &["hashtag", "label"],
+            insert: "#",
+        }]
     }
 }
 

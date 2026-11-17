@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use gpui::{
     App, ClipboardItem, Context, Div, Global, InteractiveElement as _, KeyBinding,
-    KeyBindingContextPredicate, OperatingSystem, Window, actions,
+    KeyBindingContextPredicate, OperatingSystem, Stateful, Window, actions,
 };
 
 use super::MarkdownEditor;
@@ -14,6 +14,15 @@ use crate::model::{BlockKind, Mark, TextPos};
 
 /// The key context of the editor, for host key bindings.
 pub(crate) const CONTEXT: &str = "MarkdownEditor";
+
+/// The key context of the find bar.
+pub(crate) const FIND_CONTEXT: &str = "MarkdownEditorFind";
+
+/// The key context of the link popover.
+pub(crate) const PROMPT_CONTEXT: &str = "MarkdownEditorPrompt";
+
+/// The key context entry added while the caret is in a table cell.
+pub(crate) const TABLE_CONTEXT: &str = "table";
 
 actions!(
     markdown_editor,
@@ -71,6 +80,24 @@ actions!(
         CopySelection,
         CutSelection,
         PasteClipboard,
+        Cancel,
+        OpenFind,
+        FindNext,
+        FindPrevious,
+        CloseFind,
+        ToggleFindCase,
+        ClosePrompt,
+        ApplyPrompt,
+        FoldHeading,
+        TableInsertRowAbove,
+        TableInsertRowBelow,
+        TableInsertColumnLeft,
+        TableInsertColumnRight,
+        TableDeleteRow,
+        TableDeleteColumn,
+        TableMoveColumnLeft,
+        TableMoveColumnRight,
+        TableMenu,
     ]
 );
 
@@ -143,6 +170,11 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
         ("secondary-c", Box::new(CopySelection)),
         ("secondary-x", Box::new(CutSelection)),
         ("secondary-v", Box::new(PasteClipboard)),
+        ("escape", Box::new(Cancel)),
+        ("secondary-f", Box::new(OpenFind)),
+        ("f3", Box::new(FindNext)),
+        ("shift-f3", Box::new(FindPrevious)),
+        ("secondary-.", Box::new(FoldHeading)),
     ];
     if mac {
         keys.extend([
@@ -175,15 +207,52 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
             ("ctrl-shift-end", Box::new(SelectDocEnd)),
         ]);
     }
-    let context = KeyBindingContextPredicate::parse(CONTEXT)
-        .ok()
-        .map(std::rc::Rc::new);
-    keys.into_iter()
-        .map(|(keystrokes, action)| {
-            KeyBinding::load(keystrokes, action, context.clone(), false, None, cx)
-                .expect("valid key binding")
-        })
-        .collect()
+    // Enter is bound here (after the field's own binding, which lets it
+    // through) so that it is not typed into the field as well.
+    let find: Vec<(&str, Box<dyn gpui::Action>)> = vec![
+        ("escape", Box::new(CloseFind)),
+        ("enter", Box::new(FindNext)),
+        ("shift-enter", Box::new(FindPrevious)),
+        ("secondary-f", Box::new(OpenFind)),
+        ("f3", Box::new(FindNext)),
+        ("shift-f3", Box::new(FindPrevious)),
+        ("alt-c", Box::new(ToggleFindCase)),
+    ];
+    let load = |context: &str, keys: Vec<(&str, Box<dyn gpui::Action>)>| {
+        let context = KeyBindingContextPredicate::parse(context)
+            .ok()
+            .map(std::rc::Rc::new);
+        keys.into_iter()
+            .map(move |(keystrokes, action)| {
+                KeyBinding::load(keystrokes, action, context.clone(), false, None, cx)
+                    .expect("valid key binding")
+            })
+            .collect::<Vec<_>>()
+    };
+    // Table structure, only with the caret in a table. Alt+Up/Down (move
+    // block) moves the row there.
+    let table: Vec<(&str, Box<dyn gpui::Action>)> = vec![
+        ("secondary-alt-up", Box::new(TableInsertRowAbove)),
+        ("secondary-alt-down", Box::new(TableInsertRowBelow)),
+        ("secondary-alt-left", Box::new(TableInsertColumnLeft)),
+        ("secondary-alt-right", Box::new(TableInsertColumnRight)),
+        ("secondary-alt-backspace", Box::new(TableDeleteRow)),
+        ("secondary-alt-shift-backspace", Box::new(TableDeleteColumn)),
+        ("secondary-alt-shift-left", Box::new(TableMoveColumnLeft)),
+        ("secondary-alt-shift-right", Box::new(TableMoveColumnRight)),
+        ("shift-f10", Box::new(TableMenu)),
+    ];
+    let mut all = load(CONTEXT, keys);
+    all.extend(load(&format!("{CONTEXT} && {TABLE_CONTEXT}"), table));
+    all.extend(load(FIND_CONTEXT, find));
+    all.extend(load(
+        PROMPT_CONTEXT,
+        vec![
+            ("escape", Box::new(ClosePrompt)),
+            ("enter", Box::new(ApplyPrompt)),
+        ],
+    ));
+    all
 }
 
 /// What a key does.
@@ -201,6 +270,29 @@ pub(super) enum Op {
     Cut,
     Paste,
     Link,
+    /// Escape: closes the open menu or bar.
+    Cancel,
+    OpenFind,
+    /// F3, Shift+F3: the next or previous match of the open find bar.
+    FindStep(bool),
+    /// A table structure key.
+    Table(TableKey),
+}
+
+/// A table structure key, acting on the caret's cell.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum TableKey {
+    /// Insert a row below (`true`) or above.
+    InsertRow(bool),
+    /// Insert a column right (`true`) or left.
+    InsertColumn(bool),
+    DeleteRow,
+    DeleteColumn,
+    /// Move the column right (`true`) or left.
+    MoveColumn(bool),
+    /// Open the row menu at the caret's cell, or switch an open row menu
+    /// to the column menu.
+    Menu,
 }
 
 /// A caret movement.
@@ -219,7 +311,7 @@ pub(super) enum Motion {
 }
 
 /// Adds the action handlers to the editor's root element.
-pub(super) fn bind_actions(root: Div, cx: &mut Context<MarkdownEditor>) -> Div {
+pub(super) fn bind_actions(root: Stateful<Div>, cx: &mut Context<MarkdownEditor>) -> Stateful<Div> {
     macro_rules! ops {
         ($root:expr; $($action:ident => $op:expr),* $(,)?) => {
             $root $(.on_action(cx.listener(
@@ -284,6 +376,20 @@ pub(super) fn bind_actions(root: Div, cx: &mut Context<MarkdownEditor>) -> Div {
         CopySelection => Op::Copy,
         CutSelection => Op::Cut,
         PasteClipboard => Op::Paste,
+        Cancel => Op::Cancel,
+        OpenFind => Op::OpenFind,
+        FindNext => Op::FindStep(true),
+        FindPrevious => Op::FindStep(false),
+        FoldHeading => Op::Command(Command::FoldHeading),
+        TableInsertRowAbove => Op::Table(TableKey::InsertRow(false)),
+        TableInsertRowBelow => Op::Table(TableKey::InsertRow(true)),
+        TableInsertColumnLeft => Op::Table(TableKey::InsertColumn(false)),
+        TableInsertColumnRight => Op::Table(TableKey::InsertColumn(true)),
+        TableDeleteRow => Op::Table(TableKey::DeleteRow),
+        TableDeleteColumn => Op::Table(TableKey::DeleteColumn),
+        TableMoveColumnLeft => Op::Table(TableKey::MoveColumn(false)),
+        TableMoveColumnRight => Op::Table(TableKey::MoveColumn(true)),
+        TableMenu => Op::Table(TableKey::Menu),
     )
 }
 
@@ -297,9 +403,50 @@ fn block(kind: BlockKind) -> Op {
 
 impl MarkdownEditor {
     pub(super) fn run(&mut self, op: Op, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .completion
+            .as_ref()
+            .is_some_and(|c| !c.items.is_empty())
+            && self.completion_key(&op, window, cx)
+        {
+            return;
+        }
+        if self.slash.is_some() && self.slash_key(&op, window, cx) {
+            return;
+        }
+        if self.table_menu.is_some() {
+            let delta = match op {
+                Op::Move(Motion::Up, false) => Some(Some(-1)),
+                Op::Move(Motion::Down, false) => Some(Some(1)),
+                Op::Enter => Some(None),
+                _ => None,
+            };
+            if let Some(delta) = delta
+                && self.table_menu_key(delta, window, cx)
+            {
+                return;
+            }
+        }
         let now = Instant::now();
         let mut keep_goal = false;
         match op {
+            Op::Command(Command::FoldHeading) => {
+                self.fold_at_caret(window, cx);
+                return;
+            }
+            // In a table, moving the block moves the caret's row.
+            Op::Command(Command::MoveBlockUp | Command::MoveBlockDown)
+                if self.state.current_cell().is_some() =>
+            {
+                let down = matches!(op, Op::Command(Command::MoveBlockDown));
+                self.state.table_move_row(down);
+            }
+            Op::Table(key) => {
+                if !self.table_key(key, window, cx) {
+                    cx.propagate();
+                }
+                return;
+            }
             Op::Command(command) => {
                 self.state.exec(&command, now);
             }
@@ -330,14 +477,99 @@ impl MarkdownEditor {
                     self.state.delete_selection();
                 }
             }
-            Op::Paste => {
-                if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                    self.state.paste_text(&text);
-                }
+            Op::Paste => self.paste(cx),
+            Op::Link if self.options.ui.link_popover => {
+                self.open_link_prompt(window, cx);
+                return;
             }
             Op::Link => self.toggle_link(cx),
+            Op::Cancel => {
+                // Without a menu Escape belongs to the host.
+                let style_menu = std::mem::take(&mut self.style_menu);
+                if self.table_menu.take().is_none() && self.find.take().is_none() && !style_menu {
+                    cx.propagate();
+                    return;
+                }
+            }
+            Op::OpenFind => {
+                if self.options.ui.find_bar {
+                    self.open_find(window, cx);
+                } else {
+                    cx.propagate();
+                }
+                return;
+            }
+            Op::FindStep(forward) => {
+                if self.find.is_some() {
+                    self.find_step(forward, cx);
+                } else {
+                    cx.propagate();
+                }
+                return;
+            }
         }
         self.after_change(keep_goal, window, cx);
+    }
+
+    /// Keys of the open completion list. `true` if the key was used.
+    fn completion_key(&mut self, op: &Op, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        match op {
+            Op::Move(Motion::Up, false) => self.completion_move(-1),
+            Op::Move(Motion::Down, false) => self.completion_move(1),
+            Op::Enter | Op::Tab => {
+                let selected = self.completion.as_ref().map_or(0, |m| m.selected);
+                self.completion_choose(selected, window, cx);
+            }
+            Op::Cancel => self.completion = None,
+            _ => return false,
+        }
+        cx.notify();
+        true
+    }
+
+    /// Keys of the open slash menu. `true` if the key was used.
+    fn slash_key(&mut self, op: &Op, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        match op {
+            Op::Move(Motion::Up, false) => self.slash_move(-1),
+            Op::Move(Motion::Down, false) => self.slash_move(1),
+            Op::Enter | Op::Tab => match &self.slash {
+                Some(menu) if !menu.entries.is_empty() => {
+                    let selected = menu.selected;
+                    self.slash_choose(selected, window, cx);
+                }
+                _ => {
+                    self.slash = None;
+                    return false;
+                }
+            },
+            Op::Cancel => self.slash = None,
+            _ => return false,
+        }
+        cx.notify();
+        true
+    }
+
+    /// Pastes the clipboard: image data through
+    /// [`EditorOptions::on_image`](crate::EditorOptions::on_image) as an
+    /// image block, else its text.
+    fn paste(&mut self, cx: &mut Context<Self>) {
+        let Some(item) = cx.read_from_clipboard() else {
+            return;
+        };
+        let image = item.entries().iter().find_map(|entry| match entry {
+            gpui::ClipboardEntry::Image(image) => Some(image.clone()),
+            _ => None,
+        });
+        if let Some(image) = image
+            && let Some(handler) = self.options.on_image.clone()
+            && let Some(src) = handler(image.bytes, image.format.mime_type())
+        {
+            self.state.insert_image(&src, "");
+            return;
+        }
+        if let Some(text) = item.text() {
+            self.state.paste_text(&text);
+        }
     }
 
     /// Writes the selection as Markdown to the clipboard. `false` if
@@ -351,8 +583,8 @@ impl MarkdownEditor {
         true
     }
 
-    /// Ctrl+K: removes the link at the caret or in the selection, or links
-    /// to the URL on the clipboard.
+    /// Ctrl+K without the link popover: removes the link at the caret or in
+    /// the selection, or links to the URL on the clipboard.
     fn toggle_link(&mut self, cx: &mut Context<Self>) {
         let link = Mark::Link {
             url: "".into(),
@@ -397,7 +629,7 @@ impl MarkdownEditor {
         }
         let (anchor, head) = match state.selection.clone() {
             Selection::Text { anchor, head } => (anchor, head),
-            Selection::Node(_) | Selection::All => {
+            Selection::Node(_) | Selection::All | Selection::Cells { .. } => {
                 match motion {
                     Motion::Up | Motion::PageUp | Motion::LineStart => {
                         state.move_left(Unit::Grapheme, extend)

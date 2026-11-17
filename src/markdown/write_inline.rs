@@ -1143,7 +1143,7 @@ fn delimiter_runs(
 /// `complete` tells that the line ends with this text. `first` is `true` for
 /// the first line of a block, which cannot be a setext underline or the
 /// delimiter row of a table.
-fn line_start_escape(line: &str, complete: bool, first: bool) -> Option<usize> {
+pub(crate) fn line_start_escape(line: &str, complete: bool, first: bool) -> Option<usize> {
     let bytes = line.as_bytes();
     let first_byte = *bytes.first()?;
     let space_at = |index: usize| match bytes.get(index) {
@@ -1239,7 +1239,7 @@ pub(crate) fn is_entity_like(text: &str) -> bool {
 
 /// Writes a code span with a fence that is longer than any backtick run in
 /// the code.
-fn write_code(code: &str, table: bool) -> String {
+pub(crate) fn write_code(code: &str, table: bool) -> String {
     let code = code.replace('\n', " ");
     let mut longest = 0;
     let mut current = 0;
