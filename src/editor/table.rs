@@ -280,6 +280,63 @@ impl MarkdownEditor {
         self.after_change(false, window, cx);
     }
 
+    /// A table structure key at the caret's cell. `false` if the caret is
+    /// not in a table.
+    pub(super) fn table_key(
+        &mut self,
+        key: super::keys::TableKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        use super::keys::TableKey;
+        let (Some(at), Some(head)) = (self.state.current_cell(), self.state.selection.head())
+        else {
+            return false;
+        };
+        let state = &mut self.state;
+        match key {
+            TableKey::InsertRow(below) => state.table_insert_row(below),
+            TableKey::InsertColumn(right) => state.table_insert_column(right),
+            TableKey::DeleteRow => state.table_remove_row(),
+            TableKey::DeleteColumn => state.table_remove_column(),
+            TableKey::MoveColumn(right) => state.table_move_column(right),
+            TableKey::Menu => {
+                let row_open = self.table_menu.is_some_and(|m| {
+                    matches!(m.handle, Affordance::RowHandle { table, .. } if table == at.table)
+                });
+                let handle = if row_open {
+                    Affordance::ColumnHandle {
+                        table: at.table,
+                        col: at.col,
+                    }
+                } else {
+                    Affordance::RowHandle {
+                        table: at.table,
+                        row: at.row,
+                    }
+                };
+                let ts = window.text_system().clone();
+                let view = self.view.clone();
+                let bounds = view
+                    .query(self.layout_input(), &ts)
+                    .block_bounds(head.block);
+                let Some(bounds) = bounds else {
+                    return true;
+                };
+                self.table_menu = Some(TableMenu {
+                    handle,
+                    position: bounds.bottom_left(),
+                    selected: 0,
+                });
+                cx.notify();
+                return true;
+            }
+        };
+        self.table_menu = None;
+        self.after_change(false, window, cx);
+        true
+    }
+
     /// Records the stored widths of `table` by its cells, after they were
     /// set (loaded or resized).
     pub(super) fn record_widths(&mut self, table: BlockId) {

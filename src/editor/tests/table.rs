@@ -491,3 +491,100 @@ fn column_widths_follow_structure_edits_and_their_undo(cx: &mut TestAppContext) 
     assert_eq!(meta_widths(&editor, cx), [100., 150., 200.]);
     assert_eq!(column_widths(&editor, cx, 0), [100., 150., 200.]);
 }
+
+/// The cell texts of the table at top-level block `ix`, row by row.
+fn grid(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext, ix: usize) -> Vec<String> {
+    editor.read_with(cx, |e, _| match e.document().blocks()[ix].kind() {
+        BlockKind::Table(t) => t
+            .rows
+            .iter()
+            .map(|r| {
+                r.iter()
+                    .map(|c| c.content().text().to_string())
+                    .map(|t| if t.is_empty() { "_".into() } else { t })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect(),
+        _ => panic!("not a table"),
+    })
+}
+
+#[gpui::test]
+fn table_structure_from_the_keyboard(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, &format!("{GRID}\nafter\n"));
+    let b = cell(&editor, cx, 0, 1, 1);
+    select(&editor, cx, pos(b, 0), pos(b, 0));
+
+    press(cx, "secondary-alt-down");
+    assert_eq!(
+        grid(&editor, cx, 0),
+        ["h1 h2 h3", "a b c", "_ _ _", "d e f"]
+    );
+    press(cx, "secondary-z");
+    let b = cell(&editor, cx, 0, 1, 1);
+    select(&editor, cx, pos(b, 0), pos(b, 0));
+    press(cx, "secondary-alt-up");
+    assert_eq!(
+        grid(&editor, cx, 0),
+        ["h1 h2 h3", "_ _ _", "a b c", "d e f"]
+    );
+    press(cx, "secondary-z");
+
+    let b = cell(&editor, cx, 0, 1, 1);
+    select(&editor, cx, pos(b, 0), pos(b, 0));
+    press(cx, "secondary-alt-right");
+    assert_eq!(grid(&editor, cx, 0)[1], "a b _ c");
+    press(cx, "secondary-z");
+    let b = cell(&editor, cx, 0, 1, 1);
+    select(&editor, cx, pos(b, 0), pos(b, 0));
+    press(cx, "secondary-alt-left");
+    assert_eq!(grid(&editor, cx, 0)[1], "a _ b c");
+    press(cx, "secondary-z");
+
+    // Moves: Alt+Down moves the row, Ctrl+Alt+Shift+arrows the column.
+    let b = cell(&editor, cx, 0, 1, 1);
+    select(&editor, cx, pos(b, 0), pos(b, 0));
+    press(cx, "alt-down");
+    assert_eq!(grid(&editor, cx, 0), ["h1 h2 h3", "d e f", "a b c"]);
+    press(cx, "alt-up");
+    assert_eq!(grid(&editor, cx, 0), ["h1 h2 h3", "a b c", "d e f"]);
+    press(cx, "secondary-alt-shift-right");
+    assert_eq!(grid(&editor, cx, 0)[1], "a c b");
+    press(cx, "secondary-alt-shift-left");
+    assert_eq!(grid(&editor, cx, 0)[1], "a b c");
+
+    // Deletes.
+    press(cx, "secondary-alt-shift-backspace");
+    assert_eq!(grid(&editor, cx, 0), ["h1 h3", "a c", "d f"]);
+    press(cx, "secondary-alt-backspace");
+    assert_eq!(grid(&editor, cx, 0), ["h1 h3", "d f"]);
+    press(cx, "secondary-z secondary-z");
+    assert_eq!(grid(&editor, cx, 0), ["h1 h2 h3", "a b c", "d e f"]);
+
+    // The menu: the row menu first, again for the column menu, which
+    // works with the keyboard.
+    let b = cell(&editor, cx, 0, 1, 1);
+    select(&editor, cx, pos(b, 0), pos(b, 0));
+    press(cx, "shift-f10");
+    let row_menu = editor.read_with(cx, |e, _| {
+        e.table_menu
+            .map(|m| matches!(m.handle, Affordance::RowHandle { row: 1, .. }))
+    });
+    assert_eq!(row_menu, Some(true));
+    press(cx, "shift-f10");
+    let col_menu = editor.read_with(cx, |e, _| {
+        e.table_menu
+            .map(|m| matches!(m.handle, Affordance::ColumnHandle { col: 1, .. }))
+    });
+    assert_eq!(col_menu, Some(true));
+    press(cx, "enter");
+    assert_eq!(grid(&editor, cx, 0)[1], "a _ b c", "insert column left");
+
+    // Outside a table the keys do nothing here.
+    press(cx, "doc-end");
+    let before = md(&editor, cx);
+    press(cx, "secondary-alt-up shift-f10");
+    assert_eq!(md(&editor, cx), before);
+    assert!(editor.read_with(cx, |e, _| e.table_menu.is_none()));
+}

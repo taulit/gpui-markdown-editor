@@ -531,7 +531,14 @@ impl Render for MarkdownEditor {
             .id("markdown-editor")
             .role(gpui::Role::Group)
             .aria_label("Markdown editor")
-            .key_context(keys::CONTEXT)
+            .key_context({
+                let mut context = gpui::KeyContext::default();
+                context.add(keys::CONTEXT);
+                if self.state.current_cell().is_some() {
+                    context.add(keys::TABLE_CONTEXT);
+                }
+                context
+            })
             .track_focus(&self.focus)
             .size_full()
             .on_drop(

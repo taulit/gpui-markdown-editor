@@ -113,7 +113,14 @@
 //!   Delete empties its cells, typing replaces the text of the first cell.
 //!   Near a table or with the caret in it, "+" bars below and right of it
 //!   add a row or column, and handles at the focused row and column open a
-//!   menu to insert, move, delete and align. Columns are as wide as their
+//!   menu to insert, move, delete and align. With the caret in a cell
+//!   (Cmd instead of Ctrl on macOS): Ctrl+Alt+Up/Down insert a row
+//!   above/below, Ctrl+Alt+Left/Right a column left/right,
+//!   Ctrl+Alt+Shift+Left/Right move the column, Alt+Up/Down move the row,
+//!   Ctrl+Alt+Backspace deletes the row, Ctrl+Alt+Shift+Backspace the
+//!   column, and Shift+F10 opens the row menu at the cell (pressed again,
+//!   the column menu); these bindings use the key context
+//!   `MarkdownEditor && table`. Columns are as wide as their
 //!   content (48 to 320 px), a table wider than the column is scaled down
 //!   and wraps. Dragging a column border sets its width, stored in
 //!   [`DocMeta::column_widths`] with [`EditorEvent::MetaChanged`].

@@ -7,6 +7,40 @@ API changes between tags are listed here because downstream (Sheaf) pins tags.
 
 Tables, images and the editor UI (phase E3).
 
+After review (part 3):
+
+- New key bindings in the context `MarkdownEditor && table` (active with
+  the caret in a table cell; Cmd instead of Ctrl on macOS):
+  Ctrl+Alt+Up/Down insert a row above/below, Ctrl+Alt+Left/Right insert a
+  column left/right, Ctrl+Alt+Shift+Left/Right move the column,
+  Ctrl+Alt+Backspace delete the row, Ctrl+Alt+Shift+Backspace delete the
+  column, Shift+F10 open the row menu at the caret's cell (again: the
+  column menu). Alt+Up/Down move the row instead of the table. Actions
+  `TableInsertRowAbove`, `TableInsertRowBelow`, `TableInsertColumnLeft`,
+  `TableInsertColumnRight`, `TableDeleteRow`, `TableDeleteColumn`,
+  `TableMoveColumnLeft`, `TableMoveColumnRight`, `TableMenu`.
+- Folding: the caret and node selections never end up in a folded
+  section (movement skips hidden rules, images and tables too). An edit
+  that would hide visible content unfolds the section instead: Enter at
+  the end of a folded heading, a block dropped after a folded section, a
+  heading that ended a folded section turned into content of it.
+- `html_to_markdown`: nesting deeper than 64 elements is flattened and
+  input beyond 8 MiB ignored (no stack overflow); HTML's implied end tags
+  (`<li>a<li>b`, `<td>1<td>2`, `<p>a<p>b`, `dt`/`dd`, `tr`, table sections,
+  `option`) give siblings; text that would read as Markdown syntax (`- x`,
+  `1. x`, `: x`, `==x==`, ...) is escaped.
+- Images: local files are read only if they are regular files of at most
+  64 MB (a FIFO or `/dev/zero` fails into the placeholder at once);
+  decoders refuse images over 16384 px a side or 256 MB of memory. http(s)
+  images load through the editor's own loader with the same caps (the
+  body is read up to 64 MB) and show their first frame.
+- Dropped image files are read on the background executor, with the same
+  cap.
+- Column widths follow column inserts, deletes and moves from every place
+  (format bar, menu, keys) and their undo and redo, also undoing the
+  deletion of a whole table.
+- Fixed a panic when an extension's input rule rewrote a typed `/` or `#`.
+
 API changes (part 2, editor UI):
 
 - `Extension` has four new default methods: `mark_style` (new types

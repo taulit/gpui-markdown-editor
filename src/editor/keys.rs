@@ -21,6 +21,9 @@ pub(crate) const FIND_CONTEXT: &str = "MarkdownEditorFind";
 /// The key context of the link popover.
 pub(crate) const PROMPT_CONTEXT: &str = "MarkdownEditorPrompt";
 
+/// The key context entry added while the caret is in a table cell.
+pub(crate) const TABLE_CONTEXT: &str = "table";
+
 actions!(
     markdown_editor,
     [
@@ -86,6 +89,15 @@ actions!(
         ClosePrompt,
         ApplyPrompt,
         FoldHeading,
+        TableInsertRowAbove,
+        TableInsertRowBelow,
+        TableInsertColumnLeft,
+        TableInsertColumnRight,
+        TableDeleteRow,
+        TableDeleteColumn,
+        TableMoveColumnLeft,
+        TableMoveColumnRight,
+        TableMenu,
     ]
 );
 
@@ -217,7 +229,21 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
             })
             .collect::<Vec<_>>()
     };
+    // Table structure, only with the caret in a table. Alt+Up/Down (move
+    // block) moves the row there.
+    let table: Vec<(&str, Box<dyn gpui::Action>)> = vec![
+        ("secondary-alt-up", Box::new(TableInsertRowAbove)),
+        ("secondary-alt-down", Box::new(TableInsertRowBelow)),
+        ("secondary-alt-left", Box::new(TableInsertColumnLeft)),
+        ("secondary-alt-right", Box::new(TableInsertColumnRight)),
+        ("secondary-alt-backspace", Box::new(TableDeleteRow)),
+        ("secondary-alt-shift-backspace", Box::new(TableDeleteColumn)),
+        ("secondary-alt-shift-left", Box::new(TableMoveColumnLeft)),
+        ("secondary-alt-shift-right", Box::new(TableMoveColumnRight)),
+        ("shift-f10", Box::new(TableMenu)),
+    ];
     let mut all = load(CONTEXT, keys);
+    all.extend(load(&format!("{CONTEXT} && {TABLE_CONTEXT}"), table));
     all.extend(load(FIND_CONTEXT, find));
     all.extend(load(
         PROMPT_CONTEXT,
@@ -249,6 +275,24 @@ pub(super) enum Op {
     OpenFind,
     /// F3, Shift+F3: the next or previous match of the open find bar.
     FindStep(bool),
+    /// A table structure key.
+    Table(TableKey),
+}
+
+/// A table structure key, acting on the caret's cell.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum TableKey {
+    /// Insert a row below (`true`) or above.
+    InsertRow(bool),
+    /// Insert a column right (`true`) or left.
+    InsertColumn(bool),
+    DeleteRow,
+    DeleteColumn,
+    /// Move the column right (`true`) or left.
+    MoveColumn(bool),
+    /// Open the row menu at the caret's cell, or switch an open row menu
+    /// to the column menu.
+    Menu,
 }
 
 /// A caret movement.
@@ -337,6 +381,15 @@ pub(super) fn bind_actions(root: Stateful<Div>, cx: &mut Context<MarkdownEditor>
         FindNext => Op::FindStep(true),
         FindPrevious => Op::FindStep(false),
         FoldHeading => Op::Command(Command::FoldHeading),
+        TableInsertRowAbove => Op::Table(TableKey::InsertRow(false)),
+        TableInsertRowBelow => Op::Table(TableKey::InsertRow(true)),
+        TableInsertColumnLeft => Op::Table(TableKey::InsertColumn(false)),
+        TableInsertColumnRight => Op::Table(TableKey::InsertColumn(true)),
+        TableDeleteRow => Op::Table(TableKey::DeleteRow),
+        TableDeleteColumn => Op::Table(TableKey::DeleteColumn),
+        TableMoveColumnLeft => Op::Table(TableKey::MoveColumn(false)),
+        TableMoveColumnRight => Op::Table(TableKey::MoveColumn(true)),
+        TableMenu => Op::Table(TableKey::Menu),
     )
 }
 
@@ -379,6 +432,19 @@ impl MarkdownEditor {
         match op {
             Op::Command(Command::FoldHeading) => {
                 self.fold_at_caret(window, cx);
+                return;
+            }
+            // In a table, moving the block moves the caret's row.
+            Op::Command(Command::MoveBlockUp | Command::MoveBlockDown)
+                if self.state.current_cell().is_some() =>
+            {
+                let down = matches!(op, Op::Command(Command::MoveBlockDown));
+                self.state.table_move_row(down);
+            }
+            Op::Table(key) => {
+                if !self.table_key(key, window, cx) {
+                    cx.propagate();
+                }
                 return;
             }
             Op::Command(command) => {
