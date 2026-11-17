@@ -91,7 +91,7 @@ impl<'a> ViewQuery<'a> {
     /// between blocks and below the last block. `None` only for a document
     /// without text.
     pub fn position_at(&mut self, p: Point<Pixels>) -> Option<TextPos> {
-        let d = self.state.to_doc(p);
+        let d = self.state.doc_point(p);
         let ix = self.state.slot_at_y(d.y)?;
         let n = self.state.slots.len();
         // Blocks without text (rules, images) send the search to neighbours.
@@ -123,7 +123,7 @@ impl<'a> ViewQuery<'a> {
     /// table; callers that edit cells should try [`Self::position_at`] for
     /// table cells first.
     pub fn node_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
-        let d = self.state.to_doc(p);
+        let d = self.state.doc_point(p);
         let ix = self.state.slot_at_y(d.y)?;
         let layout = self.layout(ix)?;
         let local = d - point(Pixels::ZERO, self.state.top_of(ix));
@@ -139,7 +139,7 @@ impl<'a> ViewQuery<'a> {
 
     /// The checklist item whose checkbox is under `p`.
     pub fn checkbox_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
-        let d = self.state.to_doc(p);
+        let d = self.state.doc_point(p);
         let ix = self.state.slot_at_y(d.y)?;
         let layout = self.layout(ix)?;
         let local = d - point(Pixels::ZERO, self.state.top_of(ix));
@@ -153,7 +153,7 @@ impl<'a> ViewQuery<'a> {
 
     /// The link, wiki link or tag under `p`, with the block that holds it.
     pub fn link_at(&mut self, p: Point<Pixels>) -> Option<(BlockId, MarkSpan)> {
-        let d = self.state.to_doc(p);
+        let d = self.state.doc_point(p);
         let ix = self.state.slot_at_y(d.y)?;
         let layout = self.layout(ix)?;
         let local = d - point(Pixels::ZERO, self.state.top_of(ix));
@@ -180,7 +180,7 @@ impl<'a> ViewQuery<'a> {
         let offset = floor_boundary(&node.text.text, pos.offset);
         let (_, p) = node.caret_point(offset);
         let r = Bounds::new(p, size(self.input.style.caret_width, node.text.line_height));
-        Some(self.state.to_window(ix, r))
+        Some(self.state.window_rect(ix, r))
     }
 
     /// The first line rectangle of `range` in `block`, for placing the
@@ -202,7 +202,7 @@ impl<'a> ViewQuery<'a> {
             });
         }
         let r = *node.range_rects(range).first()?;
-        Some(self.state.to_window(ix, r))
+        Some(self.state.window_rect(ix, r))
     }
 
     /// The bounds of a block, nested block or cell.
@@ -223,7 +223,7 @@ impl<'a> ViewQuery<'a> {
         } else {
             layout.rects.iter().find(|(r, _, _)| *r == id)?.2
         };
-        Some(self.state.to_window(ix, r))
+        Some(self.state.window_rect(ix, r))
     }
 
     fn line_of(&mut self, pos: TextPos) -> Option<LineRef> {

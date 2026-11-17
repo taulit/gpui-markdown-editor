@@ -716,15 +716,13 @@ fn place_table(
         });
     }
     let mut cx = x;
-    for c in 0..=cols {
+    for w in widths.iter().map(Some).chain([None]) {
         out.decorations.push(Decoration::Rect {
             bounds: Bounds::new(point(cx - hair / 2., y), size(hair, height)),
             color: border,
             radius: Pixels::ZERO,
         });
-        if c < cols {
-            cx += widths[c];
-        }
+        cx += w.copied().unwrap_or_default();
     }
     // The table comes first in document order, before its cells.
     let at = out

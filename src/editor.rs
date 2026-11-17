@@ -10,6 +10,7 @@ use gpui::{
     prelude::FluentBuilder as _, relative,
 };
 use gpui_component::input::{InputEvent, Redo, Textarea, TextareaState, Undo};
+use gpui_component::scroll::Scrollbar;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::command::Command;
@@ -451,10 +452,12 @@ impl Render for MarkdownEditor {
 
         if self.rich {
             return div()
+                .relative()
                 .size_full()
                 .on_mouse_down(MouseButton::Left, cx.listener(Self::rich_mouse_down))
                 .on_mouse_move(cx.listener(Self::rich_mouse_drag))
                 .child(DocumentElement::new(self.view.clone(), cx.entity()))
+                .child(Scrollbar::vertical(&self.view))
                 .into_any_element();
         }
 

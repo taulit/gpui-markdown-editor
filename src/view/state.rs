@@ -446,7 +446,7 @@ impl ViewState {
 
     /// The window rectangle of a document rectangle given relative to block
     /// `ix`.
-    pub fn to_window(&mut self, ix: usize, r: Bounds<Pixels>) -> Bounds<Pixels> {
+    pub fn window_rect(&mut self, ix: usize, r: Bounds<Pixels>) -> Bounds<Pixels> {
         let y = self.top_of(ix) - self.scroll_top();
         Bounds::new(
             point(
@@ -459,7 +459,7 @@ impl ViewState {
 
     /// Converts a window point to (document x relative to the column,
     /// document y).
-    pub fn to_doc(&mut self, p: gpui::Point<Pixels>) -> gpui::Point<Pixels> {
+    pub fn doc_point(&mut self, p: gpui::Point<Pixels>) -> gpui::Point<Pixels> {
         let top = self.scroll_top();
         point(
             p.x - self.bounds.origin.x - self.column_x,

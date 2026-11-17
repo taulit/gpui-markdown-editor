@@ -251,10 +251,7 @@ pub(crate) fn build_frame(
     frame
 }
 
-fn find_node<'a>(
-    visible: &'a [Visible],
-    id: BlockId,
-) -> Option<(&'a Visible, &'a super::layout::NodeLayout)> {
+fn find_node(visible: &[Visible], id: BlockId) -> Option<(&Visible, &super::layout::NodeLayout)> {
     visible
         .iter()
         .find_map(|v| v.layout.node(id).map(|(_, n)| (v, n)))

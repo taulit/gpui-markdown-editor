@@ -18,6 +18,7 @@ mod element;
 mod geometry;
 mod layout;
 mod paint;
+mod scroll;
 mod state;
 mod text;
 
@@ -118,6 +119,26 @@ impl DocumentView {
     /// Counters for tests and timing.
     pub fn stats(&self) -> ViewStats {
         self.state.borrow().stats()
+    }
+
+    /// Lays out the blocks around the viewport for `bounds` and builds the
+    /// paint list of a frame.
+    fn prepare_frame(
+        &self,
+        input: &ViewInput<'_>,
+        bounds: gpui::Bounds<Pixels>,
+        ts: &WindowTextSystem,
+    ) -> paint::Frame {
+        let mut state = self.state();
+        state.bounds = bounds;
+        state.sync(&input.layout);
+        if let Some(range) = state.pending_reveal.take() {
+            drop(state);
+            self.query(input.layout, ts).scroll_to_reveal(range);
+            state = self.state();
+        }
+        state.layout_visible(&input.layout, ts);
+        paint::build_frame(&mut state, input, ts)
     }
 
     fn state(&self) -> RefMut<'_, state::ViewState> {

@@ -6,7 +6,7 @@ use gpui::{
     px, relative,
 };
 
-use super::paint::{Frame, build_frame};
+use super::paint::Frame;
 use super::{DocumentView, ViewSource};
 
 /// Paints the document of `source` with the state of `view`, filling the
@@ -66,19 +66,8 @@ impl<T: ViewSource> Element for DocumentElement<T> {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let ts = window.text_system().clone();
-        let frame = {
-            let input = self.source.read(cx).view_input();
-            let mut state = self.view.state();
-            state.bounds = bounds;
-            state.sync(&input.layout);
-            if let Some(range) = state.pending_reveal.take() {
-                drop(state);
-                self.view.query(input.layout, &ts).scroll_to_reveal(range);
-                state = self.view.state();
-            }
-            state.layout_visible(&input.layout, &ts);
-            build_frame(&mut state, &input, &ts)
-        };
+        let input = self.source.read(cx).view_input();
+        let frame = self.view.prepare_frame(&input, bounds, &ts);
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
         (frame, hitbox)
     }
