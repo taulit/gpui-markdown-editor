@@ -11,7 +11,6 @@ use gpui::{
 use super::{MarkdownEditor, table};
 use crate::edit::Selection;
 use crate::event::EditorEvent;
-use crate::extensions::{Tag, WikiLink};
 use crate::model::{BlockId, BlockKind, Mark, MarkSpan, TextRange};
 use crate::view::{Affordance, ViewInput, ViewSource};
 
@@ -392,15 +391,17 @@ impl MarkdownEditor {
             .unwrap_or_default()
             .to_string();
         let event = match &span.mark {
-            Mark::Link { url, .. } => EditorEvent::LinkClicked(url.to_string()),
-            Mark::Custom { id, attr } if *id == WikiLink::MARK => {
-                EditorEvent::WikiLinkClicked(attr.as_ref().map_or(text, |a| a.to_string()))
-            }
-            Mark::Custom { id, .. } if *id == Tag::MARK => {
-                EditorEvent::TagClicked(text.trim_start_matches('#').to_string())
-            }
-            _ => return,
+            Mark::Link { url, .. } => Some(EditorEvent::LinkClicked(url.to_string())),
+            mark @ Mark::Custom { .. } => self
+                .state
+                .doc
+                .extensions
+                .iter()
+                .find_map(|e| e.click(mark, &text)),
+            _ => None,
         };
-        cx.emit(event);
+        if let Some(event) = event {
+            cx.emit(event);
+        }
     }
 }

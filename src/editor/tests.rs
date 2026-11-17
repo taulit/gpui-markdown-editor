@@ -7,6 +7,7 @@
 mod clipboard;
 mod drag;
 mod editing;
+mod extension;
 mod find;
 mod fold;
 mod format_bar;

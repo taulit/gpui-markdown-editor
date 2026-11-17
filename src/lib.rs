@@ -151,7 +151,7 @@ mod view;
 pub use command::Command;
 pub use editor::{MarkdownEditor, init};
 pub use event::EditorEvent;
-pub use extension::{Extension, Extensions, InlineMatch};
+pub use extension::{Extension, Extensions, InlineMatch, MarkColor, MarkStyle};
 pub use meta::DocMeta;
 pub use model::{
     Align, Block, BlockId, BlockKind, Cell, CustomMarkId, CustomNodeId, Document, ImageData,

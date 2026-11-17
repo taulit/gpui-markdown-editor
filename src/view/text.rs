@@ -10,7 +10,7 @@ use gpui::{
     font, point, px, size,
 };
 
-use crate::extensions::{Tag, WikiLink};
+use crate::extension::MarkColor;
 use crate::model::{Inline, Mark, MarkSpan};
 use crate::style::EditorStyle;
 
@@ -329,6 +329,7 @@ pub(crate) fn build_runs(
     inline: &Inline,
     spec: &TextSpec,
     style: &EditorStyle,
+    extensions: &crate::extension::Extensions,
 ) -> (Vec<TextRun>, Vec<(Range<usize>, Hsla)>) {
     let text = &inline.text;
     let base = TextRun {
@@ -404,14 +405,42 @@ pub(crate) fn build_runs(
                     run.font.family = style.code_font_family.clone();
                     run.color = style.muted_color;
                 }
-                Mark::Custom { id, .. } if *id == WikiLink::MARK => link_look(&mut run, style),
-                Mark::Custom { id, .. } if *id == Tag::MARK => {
-                    if !spec.strike {
-                        run.color = style.tag_color;
+                Mark::Custom { id, .. } => {
+                    let Some(look) = extensions.iter().find_map(|e| e.mark_style(*id)) else {
+                        continue;
+                    };
+                    let color = |c: MarkColor| match c {
+                        MarkColor::Link => style.link_color,
+                        MarkColor::Tag => style.tag_color,
+                        MarkColor::Highlight => style.highlight_color,
+                        MarkColor::Muted => style.muted_color,
+                        MarkColor::Fixed(c) => c,
+                        #[allow(unreachable_patterns)]
+                        _ => style.text_color,
+                    };
+                    let fg = look.color.map(color);
+                    if let Some(fg) = fg
+                        && !spec.strike
+                    {
+                        run.color = fg;
                     }
-                    weight = weight.max_weight(FontWeight::SEMIBOLD);
+                    if let Some(bg) = look.background {
+                        background = Some(color(bg));
+                    }
+                    if let Some(w) = look.weight {
+                        weight = weight.max_weight(w);
+                    }
+                    if look.italic {
+                        run.font.style = FontStyle::Italic;
+                    }
+                    if look.underline {
+                        run.underline = Some(UnderlineStyle {
+                            thickness: px(1.),
+                            color: Some(fg.unwrap_or(run.color).opacity(0.4)),
+                            wavy: false,
+                        });
+                    }
                 }
-                Mark::Custom { .. } => {}
             }
         }
         run.font.weight = weight;

@@ -34,6 +34,8 @@ pub(in crate::editor) enum SlashAction {
     Command(Command),
     /// Asks for the source of an image.
     Image,
+    /// Types text at the caret (entries of extensions).
+    Text(&'static str),
     Host(SlashHandler),
 }
 
@@ -177,6 +179,21 @@ fn filter(entries: Vec<SlashEntry>, query: &str) -> Vec<SlashEntry> {
 impl MarkdownEditor {
     fn slash_entries(&self) -> Vec<SlashEntry> {
         let mut entries = builtin();
+        for extension in self.state.doc.extensions.iter() {
+            entries.extend(extension.slash_items().into_iter().map(|item| {
+                SlashEntry {
+                    id: item.id.into(),
+                    label: item.label.into(),
+                    description: None,
+                    keywords: item
+                        .keywords
+                        .iter()
+                        .map(|k| SharedString::from(*k))
+                        .collect(),
+                    action: SlashAction::Text(item.insert),
+                }
+            }));
+        }
         entries.extend(self.options.slash_items.iter().map(|item| SlashEntry {
             id: item.id.clone(),
             label: item.label.clone(),
@@ -326,6 +343,9 @@ impl MarkdownEditor {
             }
             SlashAction::Command(command) => {
                 self.state.exec(&command, std::time::Instant::now());
+            }
+            SlashAction::Text(text) => {
+                self.state.type_text(text, std::time::Instant::now());
             }
             SlashAction::Image => {
                 self.after_change(false, window, cx);

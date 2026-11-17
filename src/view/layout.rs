@@ -204,6 +204,8 @@ pub(crate) struct Extras<'a> {
 
 pub(crate) struct LayoutEnv<'a> {
     pub style: &'a EditorStyle,
+    /// For the look of custom marks.
+    pub extensions: &'a crate::extension::Extensions,
     pub extras: Extras<'a>,
     pub ts: &'a WindowTextSystem,
     pub texts: &'a mut TextCache,
@@ -230,7 +232,7 @@ impl LayoutEnv<'_> {
             e.frame = self.frame;
             return (e.layout.clone(), e.backgrounds.clone());
         }
-        let (runs, backgrounds) = build_runs(inline, spec, self.style);
+        let (runs, backgrounds) = build_runs(inline, spec, self.style, self.extensions);
         let layout = Arc::new(TextLayout::shape(self.ts, &inline.text, &runs, spec, wrap));
         self.texts.shaped += 1;
         self.texts.entries.insert(
@@ -248,7 +250,7 @@ impl LayoutEnv<'_> {
     /// Shapes decoration text that has no id (bullets, numbers, alt text).
     fn label(&mut self, text: &str, spec: &TextSpec) -> Arc<TextLayout> {
         let inline = Inline::plain(text);
-        let (runs, _) = build_runs(&inline, spec, self.style);
+        let (runs, _) = build_runs(&inline, spec, self.style, self.extensions);
         Arc::new(TextLayout::shape(self.ts, text, &runs, spec, None))
     }
 

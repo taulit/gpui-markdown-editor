@@ -30,7 +30,8 @@ fn kind(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext, ix: usize) 
 fn typing_a_slash_filters_and_enter_applies(cx: &mut TestAppContext) {
     let (editor, cx) = open(cx, "");
     type_text(cx, "/");
-    assert_eq!(menu(&editor, cx).unwrap().len(), 12);
+    // 12 block types and the entries of WikiLink and Tag.
+    assert_eq!(menu(&editor, cx).unwrap().len(), 14);
     assert!(cx.debug_bounds("slash-text").is_some(), "the menu is drawn");
     type_text(cx, "he");
     assert_eq!(

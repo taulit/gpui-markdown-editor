@@ -362,6 +362,7 @@ impl ViewState {
         }
         let mut env = LayoutEnv {
             style: input.style,
+            extensions: &input.document.extensions,
             extras,
             ts,
             texts: &mut self.texts,
