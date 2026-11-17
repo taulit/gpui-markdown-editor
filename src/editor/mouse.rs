@@ -289,7 +289,8 @@ impl ViewSource for MarkdownEditor {
             }
             self.after_change(false, window, cx);
         }
-        if self.column_drag.take().is_some() {
+        if let Some(drag) = self.column_drag.take() {
+            self.record_widths(drag.table);
             self.sync_meta(cx);
         }
     }

@@ -95,6 +95,9 @@ pub struct MarkdownEditor {
     /// The column widths of `meta`, by table id, so that they stay with
     /// their table when tables before it are added or removed.
     column_widths: ColumnWidths,
+    /// The widths of `column_widths` by the cells of their columns, so
+    /// that they follow structure edits and their undo.
+    width_records: table::WidthRecords,
     highlights: Vec<TextRange>,
     /// Layout and scroll state of the rendered document.
     view: DocumentView,
@@ -168,6 +171,7 @@ impl MarkdownEditor {
             style: EditorStyle::from_theme(cx),
             meta: DocMeta::default(),
             column_widths: ColumnWidths::default(),
+            width_records: Default::default(),
             highlights: Vec::new(),
             view: DocumentView::new(),
             goal_x: None,
@@ -211,6 +215,7 @@ impl MarkdownEditor {
         self.drag = None;
         self.table_menu = None;
         self.column_widths = widths_by_id(&self.state.doc, &self.meta);
+        self.record_all_widths();
         self.folded.clear();
         self.hidden.clear();
         self.last_head = None;
@@ -334,6 +339,7 @@ impl MarkdownEditor {
     pub fn set_meta(&mut self, meta: DocMeta, cx: &mut Context<Self>) {
         self.column_widths = widths_by_id(&self.state.doc, &meta);
         self.meta = meta;
+        self.record_all_widths();
         self.load_folds(cx);
         self.leave_hidden(false);
         self.state.take_changes();
@@ -341,9 +347,11 @@ impl MarkdownEditor {
     }
 
     /// Brings [`DocMeta::column_widths`] in line with the widths by table
-    /// id (tables may have moved, appeared or gone) and emits
-    /// [`EditorEvent::MetaChanged`] if that changed it.
+    /// id (tables may have moved, appeared or gone, columns may have been
+    /// added, moved or removed) and emits [`EditorEvent::MetaChanged`] if
+    /// that changed it.
     pub(crate) fn sync_meta(&mut self, cx: &mut Context<Self>) {
+        self.derive_widths();
         let mut ordinal = 0;
         let mut widths = std::collections::BTreeMap::new();
         visit_tables(self.state.doc.blocks(), &mut |id, _| {
@@ -454,7 +462,7 @@ impl MarkdownEditor {
             self.reveal_selection();
             self.restart_blink(cx);
         }
-        if changes.structure && !self.column_widths.is_empty() {
+        if changes.structure && !self.width_records.is_empty() {
             self.sync_meta(cx);
         }
         if changes.content {

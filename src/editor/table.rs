@@ -51,6 +51,59 @@ impl ColumnDrag {
 /// Width of a column inserted into a table with stored widths.
 const NEW_COLUMN_WIDTH: f32 = 120.;
 
+/// The stored width of a column, kept with the ids of its cells: cells
+/// stay with their column when rows or columns are added, moved or removed,
+/// and undo brings removed ones back with their ids. So widths follow
+/// every structure edit, from any place, and its undo and redo.
+#[derive(Clone, Debug)]
+pub(super) struct WidthRecord {
+    cells: Vec<BlockId>,
+    width: f32,
+}
+
+/// Width records by table id. Records of removed columns and tables are
+/// kept (a few per table) for undo.
+pub(super) type WidthRecords = std::collections::HashMap<BlockId, Vec<WidthRecord>>;
+
+/// How many records of removed columns a table keeps.
+const KEPT_RECORDS: usize = 32;
+
+/// The cell ids of each column of `table`.
+fn columns(doc: &crate::model::Document, table: BlockId) -> Option<Vec<Vec<BlockId>>> {
+    let crate::model::BlockKind::Table(t) = doc.block(table)?.kind() else {
+        return None;
+    };
+    let n = t.rows.iter().map(Vec::len).max().unwrap_or(0);
+    Some(
+        (0..n)
+            .map(|c| {
+                t.rows
+                    .iter()
+                    .filter_map(|r| r.get(c))
+                    .map(|c| c.id())
+                    .collect()
+            })
+            .collect(),
+    )
+}
+
+/// Replaces the records of the present columns `cols` by `widths`,
+/// keeping those of removed columns.
+fn rerecord(records: &mut Vec<WidthRecord>, cols: Vec<Vec<BlockId>>, widths: &[f32]) {
+    let present: std::collections::HashSet<BlockId> = cols.iter().flatten().copied().collect();
+    records.retain(|r| !r.cells.iter().any(|c| present.contains(c)));
+    let excess = records.len().saturating_sub(KEPT_RECORDS);
+    records.drain(..excess);
+    records.extend(
+        cols.into_iter()
+            .zip(widths)
+            .map(|(cells, width)| WidthRecord {
+                cells,
+                width: *width,
+            }),
+    );
+}
+
 /// An entry of a row or column menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TableAction {
@@ -161,15 +214,8 @@ impl MarkdownEditor {
             Affordance::AddColumn { table } => {
                 let cols = self.table_size(table).1;
                 let row = self.caret_cell_in(table).map_or(0, |c| c.0);
-                if cols > 0
-                    && self.caret_into_cell(table, row, cols - 1)
-                    && self.state.table_insert_column(true)
-                {
-                    self.adjust_widths(
-                        table,
-                        |w| w.insert(cols.min(w.len()), NEW_COLUMN_WIDTH),
-                        cx,
-                    );
+                if cols > 0 && self.caret_into_cell(table, row, cols - 1) {
+                    self.state.table_insert_column(true);
                 }
             }
             Affordance::RowHandle { table, row } => {
@@ -217,9 +263,8 @@ impl MarkdownEditor {
             return;
         };
         let row = matches!(menu.handle, Affordance::RowHandle { .. });
-        let at = self.state.current_cell();
         let state = &mut self.state;
-        let done = match action {
+        match action {
             TableAction::InsertBefore if row => state.table_insert_row(false),
             TableAction::InsertAfter if row => state.table_insert_row(true),
             TableAction::MoveBefore if row => state.table_move_row(false),
@@ -232,39 +277,65 @@ impl MarkdownEditor {
             TableAction::Delete => state.table_remove_column(),
             TableAction::Align(align) => state.table_set_align(align),
         };
-        if let (true, false, Some(at)) = (done, row, at) {
-            let col = at.col;
-            self.adjust_widths(
-                at.table,
-                |w| match action {
-                    TableAction::InsertBefore if col <= w.len() => w.insert(col, NEW_COLUMN_WIDTH),
-                    TableAction::InsertAfter if col < w.len() => {
-                        w.insert(col + 1, NEW_COLUMN_WIDTH)
-                    }
-                    TableAction::MoveBefore if col > 0 && col < w.len() => w.swap(col - 1, col),
-                    TableAction::MoveAfter if col + 1 < w.len() => w.swap(col, col + 1),
-                    TableAction::Delete if col < w.len() => {
-                        w.remove(col);
-                    }
-                    _ => {}
-                },
-                cx,
-            );
-        }
         self.after_change(false, window, cx);
     }
 
-    /// Changes the stored column widths of `table`, if it has any, after a
-    /// column was added, moved or removed.
-    fn adjust_widths(
-        &mut self,
-        table: BlockId,
-        f: impl FnOnce(&mut Vec<f32>),
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(widths) = self.column_widths.get_mut(&table) {
-            f(widths);
-            self.sync_meta(cx);
+    /// Records the stored widths of `table` by its cells, after they were
+    /// set (loaded or resized).
+    pub(super) fn record_widths(&mut self, table: BlockId) {
+        let Some(widths) = self.column_widths.get(&table) else {
+            self.width_records.remove(&table);
+            return;
+        };
+        let Some(cols) = columns(&self.state.doc, table) else {
+            return;
+        };
+        rerecord(self.width_records.entry(table).or_default(), cols, widths);
+    }
+
+    /// Records the widths of every table, after they were loaded.
+    pub(super) fn record_all_widths(&mut self) {
+        self.width_records.clear();
+        let tables: Vec<BlockId> = self.column_widths.keys().copied().collect();
+        for table in tables {
+            self.record_widths(table);
+        }
+    }
+
+    /// Derives the widths of the tables with records from their columns
+    /// after a structure edit: a column keeps its width wherever it went, a
+    /// new column gets [`NEW_COLUMN_WIDTH`], a removed one drops its width,
+    /// and undo brings it back.
+    pub(super) fn derive_widths(&mut self) {
+        let doc = &self.state.doc;
+        for (table, records) in &mut self.width_records {
+            let Some(cols) = columns(doc, *table) else {
+                self.column_widths.remove(table);
+                continue;
+            };
+            let mut widths: Vec<Option<f32>> = cols
+                .iter()
+                .map(|cells| {
+                    records
+                        .iter()
+                        .find(|r| r.cells.iter().any(|c| cells.contains(c)))
+                        .map(|r| r.width)
+                })
+                .collect();
+            // Columns past the stored widths keep the automatic width.
+            while widths.last().is_some_and(Option::is_none) {
+                widths.pop();
+            }
+            let widths: Vec<f32> = widths
+                .into_iter()
+                .map(|w| w.unwrap_or(NEW_COLUMN_WIDTH))
+                .collect();
+            rerecord(records, cols, &widths);
+            if widths.is_empty() {
+                self.column_widths.remove(table);
+            } else {
+                self.column_widths.insert(*table, widths);
+            }
         }
     }
 

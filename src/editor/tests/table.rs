@@ -438,3 +438,56 @@ fn row_menu_works_with_the_keyboard(cx: &mut TestAppContext) {
     press(cx, "escape");
     assert!(editor.read_with(cx, |e, _| e.table_menu.is_none()));
 }
+
+fn meta_widths(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> Vec<f32> {
+    editor.read_with(cx, |e, _| {
+        e.meta().column_widths.get(&0).cloned().unwrap_or_default()
+    })
+}
+
+fn click_tool(cx: &mut VisualTestContext, selector: &'static str) {
+    let bounds = cx
+        .debug_bounds(selector)
+        .unwrap_or_else(|| panic!("{selector}"));
+    cx.simulate_click(bounds.center(), Modifiers::none());
+}
+
+#[gpui::test]
+fn column_widths_follow_structure_edits_and_their_undo(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, GRID);
+    let mut meta = crate::meta::DocMeta::default();
+    meta.column_widths.insert(0, vec![100., 150., 200.]);
+    editor.update(cx, |e, cx| e.set_meta(meta, cx));
+    let a = cell(&editor, cx, 0, 1, 0);
+    select(&editor, cx, pos(a, 0), pos(a, 0));
+
+    // The format bar's delete column, then undo and redo.
+    click_tool(cx, "ui-format-delete-column");
+    assert_eq!(meta_widths(&editor, cx), [150., 200.]);
+    assert_eq!(column_widths(&editor, cx, 0), [150., 200.]);
+    press(cx, "secondary-z");
+    assert_eq!(md(&editor, cx), GRID);
+    assert_eq!(meta_widths(&editor, cx), [100., 150., 200.]);
+    press(cx, "secondary-shift-z");
+    assert_eq!(meta_widths(&editor, cx), [150., 200.]);
+    press(cx, "secondary-z");
+    assert_eq!(meta_widths(&editor, cx), [100., 150., 200.]);
+
+    // The format bar's add column inserts after the caret's column.
+    let b = cell(&editor, cx, 0, 1, 1);
+    select(&editor, cx, pos(b, 0), pos(b, 0));
+    click_tool(cx, "ui-format-add-column");
+    assert_eq!(meta_widths(&editor, cx), [100., 150., 120., 200.]);
+    press(cx, "secondary-z");
+    assert_eq!(meta_widths(&editor, cx), [100., 150., 200.]);
+
+    // Deleting the whole table drops its widths, undo brings them back.
+    let table = block(&editor, cx, 0);
+    editor.update(cx, |e, _| e.state.set_selection(Selection::Node(table)));
+    press(cx, "delete");
+    assert!(editor.read_with(cx, |e, _| e.meta().column_widths.is_empty()));
+    press(cx, "secondary-z");
+    assert_eq!(md(&editor, cx), GRID);
+    assert_eq!(meta_widths(&editor, cx), [100., 150., 200.]);
+    assert_eq!(column_widths(&editor, cx, 0), [100., 150., 200.]);
+}
