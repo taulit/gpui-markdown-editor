@@ -37,13 +37,19 @@ fn toggle_mark_across_blocks_skips_code() {
 fn toggle_mark_in_table_cells() {
     let mut state = ed("| «a | b‸ |\n|---|---|\n| c | d |\n");
     state.toggle_mark(Mark::Strike);
-    assert_eq!(md(&state), "| ~~a~~ | ~~b~~ |\n| ----- | ----- |\n| c     | d     |\n");
+    assert_eq!(
+        md(&state),
+        "| ~~a~~ | ~~b~~ |\n| ----- | ----- |\n| c     | d     |\n"
+    );
 }
 
 #[test]
 fn set_link_on_a_selection_and_at_a_caret() {
     let mut state = ed("see «docs‸ now\n");
-    state.exec(&Command::SetLink(Some("https://x.y".into())), std::time::Instant::now());
+    state.exec(
+        &Command::SetLink(Some("https://x.y".into())),
+        std::time::Instant::now(),
+    );
     assert_eq!(md(&state), "see [docs](https://x.y) now\n");
 
     let mut state = ed("see [do‸cs](/old) now\n");

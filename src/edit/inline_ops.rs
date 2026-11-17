@@ -274,7 +274,9 @@ pub(crate) fn check(inline: &Inline) -> Result<(), String> {
             return Err(format!("empty span {span:?}"));
         }
         if end > text.len() || !text.is_char_boundary(start) || !text.is_char_boundary(end) {
-            return Err(format!("span {span:?} outside text or off boundary: {text:?}"));
+            return Err(format!(
+                "span {span:?} outside text or off boundary: {text:?}"
+            ));
         }
         if let Some(previous) = previous
             && previous.range.start > start

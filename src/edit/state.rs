@@ -74,6 +74,8 @@ impl EditorState {
             changes: Changes::default(),
         };
         state.reset_selection();
+        // Built up front so the first keystroke does not pay for it.
+        state.index.build(&state.doc);
         state
     }
 
@@ -352,7 +354,13 @@ impl EditorState {
     /// The selection one unit away from `pos`. Crossing into another node
     /// lands at its near end; a node block is selected as a whole unless
     /// `skip_nodes`.
-    fn step_from(&self, pos: TextPos, unit: Unit, forward: bool, skip_nodes: bool) -> Option<Selection> {
+    fn step_from(
+        &self,
+        pos: TextPos,
+        unit: Unit,
+        forward: bool,
+        skip_nodes: bool,
+    ) -> Option<Selection> {
         let text = &self.text_of(pos.block)?.text;
         let within = if forward {
             next_boundary(text, pos.offset, unit)
@@ -395,7 +403,11 @@ impl EditorState {
         };
         let target = match anchor {
             Some(anchor) => {
-                let head = if end { self.last_pos() } else { self.first_pos() };
+                let head = if end {
+                    self.last_pos()
+                } else {
+                    self.first_pos()
+                };
                 match head {
                     Some(head) => Selection::Text { anchor, head },
                     None => return false,

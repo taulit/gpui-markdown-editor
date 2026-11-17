@@ -17,7 +17,11 @@ fn block_rule(trigger: &str, text: &str, expected: &str) {
     let mut clock = Clock::new();
     type_str(&mut state, &mut clock, trigger);
     type_str(&mut state, &mut clock, text);
-    assert_eq!(md(&state), format!("Intro\n\n{expected}"), "rule {trigger:?}");
+    assert_eq!(
+        md(&state),
+        format!("Intro\n\n{expected}"),
+        "rule {trigger:?}"
+    );
 
     // Backspace directly after the rule restores the literal text.
     let mut state = ed(source);
@@ -33,7 +37,10 @@ fn block_rule(trigger: &str, text: &str, expected: &str) {
     backspace(&mut state);
     type_str(&mut state, &mut Clock::new(), trigger);
     assert!(state.undo());
-    assert_eq!(state.doc.blocks[1].content.text, trigger, "undo after {trigger:?}");
+    assert_eq!(
+        state.doc.blocks[1].content.text, trigger,
+        "undo after {trigger:?}"
+    );
     while state.undo() {}
     assert_eq!(state.markdown(), "Intro\n\nx\n");
 }

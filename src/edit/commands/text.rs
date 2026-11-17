@@ -166,7 +166,12 @@ impl EditorState {
                     block: head.block,
                     offset: start,
                 };
-                self.delete_in_node(pos, head, EditKind::DeleteBackward { node: head.block }, now)
+                self.delete_in_node(
+                    pos,
+                    head,
+                    EditKind::DeleteBackward { node: head.block },
+                    now,
+                )
             }
             None => self.backspace_at_start(head.block),
         }
@@ -194,7 +199,13 @@ impl EditorState {
         }
     }
 
-    fn delete_in_node(&mut self, start: TextPos, end: TextPos, kind: EditKind, now: Instant) -> bool {
+    fn delete_in_node(
+        &mut self,
+        start: TextPos,
+        end: TextPos,
+        kind: EditKind,
+        now: Instant,
+    ) -> bool {
         self.transact(kind, Some(now), "", move |tr, _| {
             tr.replace(start.block, start.offset..end.offset, Inline::default())?;
             Ok(Selection::caret(start))
@@ -458,7 +469,11 @@ impl EditorState {
             return false;
         }
         self.transact(EditKind::Other, None, "", move |tr, sel| {
-            tr.replace(head.block, line_start..line_start + spaces, Inline::default())?;
+            tr.replace(
+                head.block,
+                line_start..line_start + spaces,
+                Inline::default(),
+            )?;
             let shift = |pos: TextPos| TextPos {
                 block: pos.block,
                 offset: if pos.block == head.block && pos.offset >= line_start {
@@ -528,7 +543,11 @@ impl EditorState {
 }
 
 /// Inserts `lines` at `pos`: see [`EditorState::insert_inline_lines`].
-pub(crate) fn insert_lines(tr: &mut Tr<'_>, pos: TextPos, lines: Vec<Inline>) -> EditResult<Selection> {
+pub(crate) fn insert_lines(
+    tr: &mut Tr<'_>,
+    pos: TextPos,
+    lines: Vec<Inline>,
+) -> EditResult<Selection> {
     if tr.is_cell(pos.block) || tr.is_literal(pos.block) {
         // One line in a cell, the text as is in code.
         let separator = if tr.is_cell(pos.block) { " " } else { "\n" };
@@ -590,10 +609,7 @@ pub(crate) fn insert_lines(tr: &mut Tr<'_>, pos: TextPos, lines: Vec<Inline>) ->
 /// `true` for marks that can be toggled at a caret as pending marks.
 pub(crate) fn pending_toggle(current: &[Mark], mark: &Mark) -> Vec<Mark> {
     let mut marks: Vec<Mark> = current.to_vec();
-    if let Some(index) = marks
-        .iter()
-        .position(|m| inline_ops::same_kind(m, mark))
-    {
+    if let Some(index) = marks.iter().position(|m| inline_ops::same_kind(m, mark)) {
         marks.remove(index);
     } else {
         marks.push(mark.clone());

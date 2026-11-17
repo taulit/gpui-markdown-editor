@@ -25,14 +25,38 @@ pub(crate) enum Attr {
 /// A change of a table's rows, columns or cells.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum TableOp {
-    InsertRow { index: usize, cells: Vec<Cell> },
-    RemoveRow { index: usize },
-    MoveRow { from: usize, to: usize },
-    InsertColumn { index: usize, align: Align, cells: Vec<Cell> },
-    RemoveColumn { index: usize },
-    MoveColumn { from: usize, to: usize },
-    SetAlign { column: usize, align: Align },
-    SetCell { row: usize, col: usize, content: Inline },
+    InsertRow {
+        index: usize,
+        cells: Vec<Cell>,
+    },
+    RemoveRow {
+        index: usize,
+    },
+    MoveRow {
+        from: usize,
+        to: usize,
+    },
+    InsertColumn {
+        index: usize,
+        align: Align,
+        cells: Vec<Cell>,
+    },
+    RemoveColumn {
+        index: usize,
+    },
+    MoveColumn {
+        from: usize,
+        to: usize,
+    },
+    SetAlign {
+        column: usize,
+        align: Align,
+    },
+    SetCell {
+        row: usize,
+        col: usize,
+        content: Inline,
+    },
 }
 
 /// One invertible change.
@@ -83,7 +107,9 @@ pub(crate) enum Step {
         block: Box<Block>,
     },
     /// Removes a block with its children.
-    RemoveBlock { block: BlockId },
+    RemoveBlock {
+        block: BlockId,
+    },
     /// Moves a block with its children. `index` counts in the new parent's
     /// children after the block was taken out.
     MoveBlock {
@@ -91,7 +117,10 @@ pub(crate) enum Step {
         parent: Option<BlockId>,
         index: usize,
     },
-    TableOp { table: BlockId, op: TableOp },
+    TableOp {
+        table: BlockId,
+        op: TableOp,
+    },
 }
 
 /// Why a step could not be applied. Steps built by the editor are valid, so
@@ -162,7 +191,11 @@ fn check_range(text: &str, range: &Range<usize>) -> Result<(), StepError> {
 }
 
 impl Step {
-    pub(crate) fn affected(&self, doc: &Document, index: &PathIndex) -> Result<Affected, StepError> {
+    pub(crate) fn affected(
+        &self,
+        doc: &Document,
+        index: &PathIndex,
+    ) -> Result<Affected, StepError> {
         let mut out = Affected::default();
         let top_of = |id: BlockId| -> Result<Option<BlockId>, StepError> {
             Ok(top_id(doc, &locate(doc, index, id)?))
@@ -214,11 +247,17 @@ impl Step {
 
     /// Applies the step and returns its inverse. On error the document is
     /// unchanged.
-    pub(crate) fn apply(&self, doc: &mut Document, index: &PathIndex) -> Result<Outcome, StepError> {
-        let text_outcome = |inverse| Ok(Outcome {
-            inverse,
-            structural: false,
-        });
+    pub(crate) fn apply(
+        &self,
+        doc: &mut Document,
+        index: &PathIndex,
+    ) -> Result<Outcome, StepError> {
+        let text_outcome = |inverse| {
+            Ok(Outcome {
+                inverse,
+                structural: false,
+            })
+        };
         match self {
             Step::ReplaceText {
                 node,
@@ -309,7 +348,11 @@ impl Step {
                 let old = std::mem::replace(&mut target.kind, kind.clone());
                 // A table's cells are stops; changing to or from a table
                 // changes the structure.
-                let structural = matches!(old, BlockKind::Table(_)) || matches!(kind, BlockKind::Table(_));
+                let structural =
+                    matches!(old, BlockKind::Table(_)) || matches!(kind, BlockKind::Table(_));
+                if structural {
+                    index.invalidate();
+                }
                 Ok(Outcome {
                     inverse: Step::SetBlockKind {
                         block: *block,
@@ -348,7 +391,9 @@ impl Step {
                 index: at,
                 block,
             } => {
-                if order::find_loc(doc, block.id).is_some() {
+                // Ids come from `Document::alloc_id` or from a removed block;
+                // checking costs a walk of the document, so only in tests.
+                if cfg!(debug_assertions) && order::find_loc(doc, block.id).is_some() {
                     return err(format!("id {:?} exists", block.id));
                 }
                 let parent_path = match parent {
@@ -368,6 +413,7 @@ impl Step {
                     return err("index out of range");
                 }
                 siblings.insert(*at, (**block).clone());
+                index.inserted(&parent_path, *at, block);
                 Ok(Outcome {
                     inverse: Step::RemoveBlock { block: block.id },
                     structural: true,
@@ -384,6 +430,7 @@ impl Step {
                     return err("index out of range");
                 }
                 let removed = siblings.remove(at);
+                index.removed(parent_path, at, &removed);
                 Ok(Outcome {
                     inverse: Step::InsertBlock {
                         parent,
@@ -439,10 +486,12 @@ impl Step {
                     return err("no parent");
                 };
                 let moved = siblings.remove(old_index);
+                index.removed(old_parent_path, old_index, &moved);
                 let Some(siblings) = order::siblings_mut(&mut doc.blocks, &target) else {
                     return err("no target");
                 };
                 siblings.insert(*at, moved);
+                index.inserted(&target, *at, &siblings[*at]);
                 Ok(Outcome {
                     inverse: Step::MoveBlock {
                         block: *block,
@@ -454,7 +503,19 @@ impl Step {
             }
             Step::TableOp { table, op } => {
                 let path = block_path(doc, index, *table)?;
-                apply_table(doc, &path, *table, op)
+                let old: Vec<BlockId> = match order::block_at(&doc.blocks, &path).map(|b| &b.kind) {
+                    Some(BlockKind::Table(data)) => {
+                        data.rows.iter().flatten().map(|c| c.id).collect()
+                    }
+                    _ => Vec::new(),
+                };
+                let outcome = apply_table(doc, &path, *table, op)?;
+                if outcome.structural
+                    && let Some(block) = order::block_at(&doc.blocks, &path)
+                {
+                    index.table_changed(&path, &old, block);
+                }
+                Ok(outcome)
             }
         }
     }
@@ -467,9 +528,12 @@ fn apply_table(
     op: &TableOp,
 ) -> Result<Outcome, StepError> {
     let fresh_ids = |cells: &[Cell], doc: &Document| {
-        cells.iter().all(|cell| order::find_loc(doc, cell.id).is_none())
+        cells
+            .iter()
+            .all(|cell| order::find_loc(doc, cell.id).is_none())
     };
     if let TableOp::InsertRow { cells, .. } | TableOp::InsertColumn { cells, .. } = op
+        && cfg!(debug_assertions)
         && !fresh_ids(cells, doc)
     {
         return err("cell id exists");
@@ -513,7 +577,13 @@ fn apply_table(
             }
             let row = data.rows.remove(*from);
             data.rows.insert(*to, row);
-            wrap(TableOp::MoveRow { from: *to, to: *from }, true)
+            wrap(
+                TableOp::MoveRow {
+                    from: *to,
+                    to: *from,
+                },
+                true,
+            )
         }
         TableOp::InsertColumn {
             index,
@@ -554,7 +624,13 @@ fn apply_table(
                 let cell = row.remove(*from);
                 row.insert(*to, cell);
             }
-            wrap(TableOp::MoveColumn { from: *to, to: *from }, true)
+            wrap(
+                TableOp::MoveColumn {
+                    from: *to,
+                    to: *from,
+                },
+                true,
+            )
         }
         TableOp::SetAlign { column, align } => {
             let Some(slot) = data.align.get_mut(*column) else {

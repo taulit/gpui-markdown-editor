@@ -27,18 +27,27 @@ fn set_block_converts_and_toggles() {
 #[test]
 fn set_block_on_several_blocks() {
     let mut state = ed("«a\n\nb\n\nc‸\n");
-    exec(&mut state, Command::SetBlock(BlockKind::TaskItem { checked: false }));
+    exec(
+        &mut state,
+        Command::SetBlock(BlockKind::TaskItem { checked: false }),
+    );
     // The blank lines of the source stay: a loose list.
     assert_eq!(md(&state), "- [ ] a\n\n- [ ] b\n\n- [ ] c\n");
     let mut state = ed("«a\nb\n\nc‸\n");
-    exec(&mut state, Command::SetBlock(BlockKind::OrderedItem { number: 1 }));
+    exec(
+        &mut state,
+        Command::SetBlock(BlockKind::OrderedItem { number: 1 }),
+    );
     assert_eq!(md(&state), "1. a b\n\n2. c\n");
 }
 
 #[test]
 fn set_block_lifts_children_and_strips_marks_for_code() {
     let mut state = ed("- **a‸**\n  - b\n");
-    exec(&mut state, Command::SetBlock(BlockKind::CodeBlock { lang: None }));
+    exec(
+        &mut state,
+        Command::SetBlock(BlockKind::CodeBlock { lang: None }),
+    );
     assert_eq!(md(&state), "```\na\n```\n\n- b\n");
 }
 
@@ -58,7 +67,9 @@ fn toggle_task_and_check_all() {
 
 #[test]
 fn move_checked_to_bottom_works_per_run() {
-    let mut state = ed("- [x] a‸\n- [ ] b\n- [x] c\n- [ ] d\n  - [x] e\n  - [ ] f\n\ntext\n\n- [x] g\n- [ ] h\n");
+    let mut state = ed(
+        "- [x] a‸\n- [ ] b\n- [x] c\n- [ ] d\n  - [x] e\n  - [ ] f\n\ntext\n\n- [x] g\n- [ ] h\n",
+    );
     exec(&mut state, Command::MoveCheckedToBottom);
     assert_eq!(
         md(&state),

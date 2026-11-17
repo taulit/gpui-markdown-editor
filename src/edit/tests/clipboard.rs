@@ -11,7 +11,10 @@ fn md(state: &EditorState) -> String {
 fn selected_text_and_markdown() {
     let state = ed("# Ti«tle\n\n- **bold** item\n- other‸ one\n");
     assert_eq!(state.selected_text(), "tle\nbold item\nother");
-    assert_eq!(state.selected_markdown(), "# tle\n\n- **bold** item\n- other\n");
+    assert_eq!(
+        state.selected_markdown(),
+        "# tle\n\n- **bold** item\n- other\n"
+    );
     let state = ed("a **b«old‸** c\n");
     assert_eq!(state.selected_markdown(), "**old**\n");
 }
@@ -67,7 +70,10 @@ fn inserted_tables_get_fresh_ids() {
     let mut state = ed("| a |\n|---|\n\nx‸\n");
     state.insert_markdown("| b |\n|---|\n| c |\n");
     check_invariants(&state).unwrap();
-    assert_eq!(md(&state), "| a |\n|---|\n\nx\n\n| b   |\n| --- |\n| c   |\n");
+    assert_eq!(
+        md(&state),
+        "| a |\n|---|\n\nx\n\n| b   |\n| --- |\n| c   |\n"
+    );
 }
 
 #[test]

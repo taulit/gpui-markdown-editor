@@ -102,7 +102,10 @@ fn backspace_in_an_empty_paragraph_after_an_image_removes_it() {
     backspace(&mut state);
     assert!(backspace(&mut state));
     assert_eq!(md(&state), "![i](x.png)\n");
-    assert_eq!(caret(&state), "<node Image(ImageData { src: \"x.png\", alt: \"i\", title: None, width: None })>");
+    assert_eq!(
+        caret(&state),
+        "<node Image(ImageData { src: \"x.png\", alt: \"i\", title: None, width: None })>"
+    );
 }
 
 #[test]

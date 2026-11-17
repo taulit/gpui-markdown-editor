@@ -8,9 +8,7 @@ use crate::edit::order::{self, Loc};
 use crate::edit::state::EditorState;
 use crate::edit::step::{Attr, Step};
 use crate::edit::transaction::Tr;
-use crate::model::{
-    Align, Block, BlockId, BlockKind, Cell, ImageData, Inline, TableData, TextPos,
-};
+use crate::model::{Align, Block, BlockId, BlockKind, Cell, ImageData, Inline, TableData, TextPos};
 
 /// The most rows or columns [`EditorState::insert_table`] creates.
 const MAX_TABLE_SIZE: usize = 64;
@@ -229,13 +227,15 @@ impl EditorState {
             let mut index = 0;
             while index < blocks.len() {
                 let start = index;
-                while index < blocks.len() && matches!(blocks[index].kind, BlockKind::TaskItem { .. })
+                while index < blocks.len()
+                    && matches!(blocks[index].kind, BlockKind::TaskItem { .. })
                 {
                     index += 1;
                 }
                 if index > start {
                     let run = &blocks[start..index];
-                    let checked = |b: &Block| matches!(b.kind, BlockKind::TaskItem { checked: true });
+                    let checked =
+                        |b: &Block| matches!(b.kind, BlockKind::TaskItem { checked: true });
                     let order: Vec<BlockId> = run
                         .iter()
                         .filter(|b| !checked(b))

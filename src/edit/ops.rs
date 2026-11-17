@@ -119,7 +119,11 @@ impl Tr<'_> {
         self.insert_block(parent, index + 1, block)
     }
 
-    pub(crate) fn insert_before(&mut self, id: BlockId, block: Block) -> Result<BlockId, StepError> {
+    pub(crate) fn insert_before(
+        &mut self,
+        id: BlockId,
+        block: Block,
+    ) -> Result<BlockId, StepError> {
         let (parent, index) = self.parent(id)?;
         self.insert_block(parent, index, block)
     }

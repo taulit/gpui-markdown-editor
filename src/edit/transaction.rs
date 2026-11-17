@@ -88,8 +88,8 @@ impl<'a> Tr<'a> {
             parents,
         } = step.affected(self.doc, self.index)?;
         let outcome = step.apply(self.doc, self.index)?;
+        // Steps keep the path index up to date themselves.
         if outcome.structural {
-            self.index.invalidate();
             self.applied.structure = true;
         }
         for id in tops.into_iter().chain(moved) {
@@ -214,9 +214,9 @@ impl<'a> Tr<'a> {
             mut applied,
             ..
         } = self;
-        applied
-            .changed
-            .retain(|id| matches!(index.locate(doc, *id), Some(Loc::Block(path)) if path.len() == 1));
+        applied.changed.retain(
+            |id| matches!(index.locate(doc, *id), Some(Loc::Block(path)) if path.len() == 1),
+        );
         inverses.reverse();
         let forward = Transaction {
             steps,
@@ -248,8 +248,9 @@ impl<'a> Tr<'a> {
 
     pub(crate) fn block(&self, id: BlockId) -> Result<&Block, StepError> {
         match self.loc(id)? {
-            Loc::Block(path) => order::block_at(&self.doc.blocks, &path)
-                .ok_or_else(|| StepError("no block".into())),
+            Loc::Block(path) => {
+                order::block_at(&self.doc.blocks, &path).ok_or_else(|| StepError("no block".into()))
+            }
             Loc::Cell { .. } => Err(StepError("cell is not a block".into())),
         }
     }

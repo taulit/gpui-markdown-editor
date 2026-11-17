@@ -283,22 +283,30 @@ fn writer_safe(blocks: &[Block]) -> bool {
         let break_in_link = inline.marks.iter().any(|span| {
             matches!(span.mark, Mark::Link { .. }) && text[span.range.clone()].contains('\n')
         });
-        !shared && !break_in_link && inline.marks.iter().all(|span| {
-            if !inline_ops::is_formatting(&span.mark) || matches!(span.mark, Mark::Code) {
-                return true;
-            }
-            let inside_start = text[span.range.start..].chars().next();
-            let inside_end = text[..span.range.end].chars().next_back();
-            let before = text[..span.range.start].chars().next_back();
-            let after = text[span.range.end..].chars().next();
-            !(punct(inside_start) || punct(inside_end) || punct(before) && before != Some(' ') || punct(after) && after != Some(' '))
-        })
+        !shared
+            && !break_in_link
+            && inline.marks.iter().all(|span| {
+                if !inline_ops::is_formatting(&span.mark) || matches!(span.mark, Mark::Code) {
+                    return true;
+                }
+                let inside_start = text[span.range.start..].chars().next();
+                let inside_end = text[..span.range.end].chars().next_back();
+                let before = text[..span.range.start].chars().next_back();
+                let after = text[span.range.end..].chars().next();
+                !(punct(inside_start)
+                    || punct(inside_end)
+                    || punct(before) && before != Some(' ')
+                    || punct(after) && after != Some(' '))
+            })
     }
     blocks.iter().all(|block| {
         // An item or quote without text whose first child is a paragraph
         // reads back with that paragraph as its text.
         let lifts_child = block.content.text.is_empty()
-            && block.children.first().is_some_and(|c| c.kind == BlockKind::Paragraph);
+            && block
+                .children
+                .first()
+                .is_some_and(|c| c.kind == BlockKind::Paragraph);
         // Line breaks at the edges of a block have no Markdown form.
         let edge_break = !order::is_literal(&block.kind)
             && (block.content.text.starts_with('\n') || block.content.text.ends_with('\n'));
@@ -306,7 +314,9 @@ fn writer_safe(blocks: &[Block]) -> bool {
             && !edge_break
             && inline_safe(&block.content)
             && match &block.kind {
-                BlockKind::Table(data) => data.rows.iter().flatten().all(|c| inline_safe(&c.content)),
+                BlockKind::Table(data) => {
+                    data.rows.iter().flatten().all(|c| inline_safe(&c.content))
+                }
                 _ => true,
             }
             && writer_safe(&block.children)
@@ -315,7 +325,8 @@ fn writer_safe(blocks: &[Block]) -> bool {
 
 fn drop_empty_paragraphs(blocks: &mut Vec<Block>) {
     blocks.retain(|b| {
-        !(b.kind == BlockKind::Raw || b.kind == BlockKind::Paragraph && b.content.text.trim().is_empty())
+        !(b.kind == BlockKind::Raw
+            || b.kind == BlockKind::Paragraph && b.content.text.trim().is_empty())
     });
     for block in blocks {
         drop_empty_paragraphs(&mut block.children);
@@ -377,14 +388,15 @@ proptest! {
     }
 }
 
-
-
 /// Cases the property test found in the serializer.
 #[test]
 fn serializer_regressions() {
     let stable = |state: &EditorState| {
         let normalized = state.doc.normalized();
-        assert_eq!(Document::parse_with(&normalized, extensions()).normalized(), normalized);
+        assert_eq!(
+            Document::parse_with(&normalized, extensions()).normalized(),
+            normalized
+        );
     };
     // A `#` behind a line break in a heading is not a closing sequence.
     let mut state = ed("x‸\n");

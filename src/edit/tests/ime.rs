@@ -28,7 +28,10 @@ fn pinyin_preedit_with_inner_selection() {
     assert_eq!(state.selected_range_utf16(), Some((1..2, false)));
     state.replace_text_in_range_utf16(None, "你好", clock.now());
     assert_eq!(caret(&state), "你好‸x");
-    assert_eq!(state.text_for_range_utf16(0..2), Some(("你好".to_string(), 0..2)));
+    assert_eq!(
+        state.text_for_range_utf16(0..2),
+        Some(("你好".to_string(), 0..2))
+    );
     check_invariants(&state).unwrap();
 }
 
@@ -53,7 +56,7 @@ fn mark_delete_and_type_again_does_not_panic() {
     assert_eq!(state.markdown(), "abz\n");
     state.marked = Some((state.doc.blocks[0].id, 1..99));
     assert_eq!(state.marked_range_utf16(), None);
-    state.replace_text_in_range_utf16(Some(7..3), "!", clock.now());
+    state.replace_text_in_range_utf16(Some(std::ops::Range { start: 7, end: 3 }), "!", clock.now());
     check_invariants(&state).unwrap();
 }
 

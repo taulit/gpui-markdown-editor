@@ -38,7 +38,8 @@ fn block_rule(prefix: &str) -> Option<BlockKind> {
         "```" => BlockKind::CodeBlock { lang: None },
         _ => {
             let digits = prefix.strip_suffix(". ")?;
-            if digits.is_empty() || digits.len() > 9 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            if digits.is_empty() || digits.len() > 9 || !digits.bytes().all(|b| b.is_ascii_digit())
+            {
                 return None;
             }
             BlockKind::OrderedItem {
@@ -181,7 +182,10 @@ fn find_pair(inline: &Inline, caret: usize) -> Option<(usize, usize, &'static st
             continue;
         };
         let inner = &text[open + delimiter.len()..close];
-        if inner.is_empty() || inner.starts_with(char::is_whitespace) || inner.ends_with(char::is_whitespace) {
+        if inner.is_empty()
+            || inner.starts_with(char::is_whitespace)
+            || inner.ends_with(char::is_whitespace)
+        {
             continue;
         }
         if single_star && (text[..open].ends_with('*') || inner.starts_with('*')) {

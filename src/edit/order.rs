@@ -14,6 +14,7 @@
 use std::cell::{Cell as StdCell, RefCell};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use smallvec::SmallVec;
 
@@ -212,12 +213,36 @@ pub(crate) fn find_loc(doc: &Document, id: BlockId) -> Option<Loc> {
 }
 
 /// Lookups that miss the map before it is rebuilt.
-const REBUILD_AFTER: u32 = 3;
+const REBUILD_AFTER: u32 = 8;
+
+/// Block ids are small sequential integers: a multiplicative hash spreads
+/// them well and is much cheaper than SipHash when the map is rebuilt.
+#[derive(Default)]
+struct IdHasher(u64);
+
+impl Hasher for IdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 =
+                (self.0.rotate_left(5) ^ u64::from(*byte)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = (self.0 ^ value).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+type IdMap = HashMap<BlockId, Loc, BuildHasherDefault<IdHasher>>;
 
 /// A lazily rebuilt map from id to [`Loc`].
 #[derive(Debug, Default)]
 pub(crate) struct PathIndex {
-    map: RefCell<Option<HashMap<BlockId, Loc>>>,
+    map: RefCell<Option<IdMap>>,
     misses: StdCell<u32>,
 }
 
@@ -233,6 +258,11 @@ impl PathIndex {
     pub(crate) fn invalidate(&self) {
         self.map.borrow_mut().take();
         self.misses.set(0);
+    }
+
+    /// Builds the map now instead of on demand.
+    pub(crate) fn build(&self, doc: &Document) {
+        *self.map.borrow_mut() = Some(build_map(doc));
     }
 
     pub(crate) fn locate(&self, doc: &Document, id: BlockId) -> Option<Loc> {
@@ -251,8 +281,102 @@ impl PathIndex {
     }
 }
 
-fn build_map(doc: &Document) -> HashMap<BlockId, Loc> {
-    fn walk(blocks: &[Block], path: &mut Path, map: &mut HashMap<BlockId, Loc>) {
+impl PathIndex {
+    /// Updates the map after `block` was inserted at `index` among the
+    /// children of the block at `parent` (empty: the top level).
+    pub(crate) fn inserted(&self, parent: &[usize], index: usize, block: &Block) {
+        let mut map = self.map.borrow_mut();
+        let Some(map) = map.as_mut() else {
+            return;
+        };
+        shift(map, parent, index, true);
+        let mut path: Path = parent.into();
+        path.push(index);
+        add_subtree(map, block, &mut path);
+    }
+
+    /// Updates the map after `block` was removed from `index` among the
+    /// children of the block at `parent`.
+    pub(crate) fn removed(&self, parent: &[usize], index: usize, block: &Block) {
+        let mut map = self.map.borrow_mut();
+        let Some(map) = map.as_mut() else {
+            return;
+        };
+        remove_subtree(map, block);
+        shift(map, parent, index, false);
+    }
+
+    /// Updates the cells of the table at `path` after rows or columns
+    /// changed. `old` are the cell ids before the change.
+    pub(crate) fn table_changed(&self, path: &[usize], old: &[BlockId], block: &Block) {
+        let mut map = self.map.borrow_mut();
+        let Some(map) = map.as_mut() else {
+            return;
+        };
+        for id in old {
+            map.remove(id);
+        }
+        add_cells(map, block, path);
+    }
+}
+
+/// Moves the paths of later siblings (and their descendants) of a changed
+/// child list by one.
+fn shift(map: &mut IdMap, parent: &[usize], index: usize, insert: bool) {
+    let depth = parent.len();
+    for loc in map.values_mut() {
+        let path = match loc {
+            Loc::Block(path) | Loc::Cell { table: path, .. } => path,
+        };
+        if path.len() > depth && path[depth] >= index && path.starts_with(parent) {
+            if insert {
+                path[depth] += 1;
+            } else if path[depth] > index {
+                path[depth] -= 1;
+            }
+        }
+    }
+}
+
+fn add_cells(map: &mut IdMap, block: &Block, path: &[usize]) {
+    if let BlockKind::Table(data) = &block.kind {
+        for (row, cells) in data.rows.iter().enumerate() {
+            for (col, cell) in cells.iter().enumerate() {
+                let loc = Loc::Cell {
+                    table: path.into(),
+                    row,
+                    col,
+                };
+                map.insert(cell.id, loc);
+            }
+        }
+    }
+}
+
+fn add_subtree(map: &mut IdMap, block: &Block, path: &mut Path) {
+    map.insert(block.id, Loc::Block(path.clone()));
+    add_cells(map, block, path);
+    for (index, child) in block.children.iter().enumerate() {
+        path.push(index);
+        add_subtree(map, child, path);
+        path.pop();
+    }
+}
+
+fn remove_subtree(map: &mut IdMap, block: &Block) {
+    map.remove(&block.id);
+    if let BlockKind::Table(data) = &block.kind {
+        for cell in data.rows.iter().flatten() {
+            map.remove(&cell.id);
+        }
+    }
+    for child in &block.children {
+        remove_subtree(map, child);
+    }
+}
+
+fn build_map(doc: &Document) -> IdMap {
+    fn walk(blocks: &[Block], path: &mut Path, map: &mut IdMap) {
         for (index, block) in blocks.iter().enumerate() {
             path.push(index);
             map.insert(block.id, Loc::Block(path.clone()));
@@ -272,7 +396,7 @@ fn build_map(doc: &Document) -> HashMap<BlockId, Loc> {
             path.pop();
         }
     }
-    let mut map = HashMap::with_capacity(doc.blocks.len() * 2);
+    let mut map = IdMap::with_capacity_and_hasher(doc.blocks.len() * 2, Default::default());
     walk(&doc.blocks, &mut Path::new(), &mut map);
     map
 }

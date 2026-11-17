@@ -28,8 +28,16 @@ impl EditorState {
             let Some(inline) = order::inline_at(&self.doc, &stop.loc) else {
                 continue;
             };
-            let a = if stop.id == start.block { start.offset } else { 0 };
-            let b = if stop.id == end.block { end.offset } else { inline.text.len() };
+            let a = if stop.id == start.block {
+                start.offset
+            } else {
+                0
+            };
+            let b = if stop.id == end.block {
+                end.offset
+            } else {
+                inline.text.len()
+            };
             parts.push(inline.text.get(a..b).unwrap_or_default().to_string());
         }
         parts.join("\n")
@@ -138,8 +146,7 @@ fn insert_blocks_at(tr: &mut Tr<'_>, pos: TextPos, blocks: Vec<Block>) -> EditRe
     let block = tr.block(pos.block)?;
     let len = block.content.text.len();
     let kind = block.kind.clone();
-    let empty_paragraph =
-        kind == BlockKind::Paragraph && len == 0 && block.children.is_empty();
+    let empty_paragraph = kind == BlockKind::Paragraph && len == 0 && block.children.is_empty();
     let last_is_text = blocks.last().is_some_and(|b| order::has_text(&b.kind));
     let (parent, index) = tr.parent(pos.block)?;
     let (at, follower) = if empty_paragraph {
@@ -239,7 +246,12 @@ fn detach(mut block: Block) -> Block {
 
 /// The blocks touched by a selection: selected blocks with their text cut to
 /// the selection, unselected parents replaced by their selected children.
-fn prune(blocks: &[Block], selected: &HashSet<BlockId>, start: TextPos, end: TextPos) -> Vec<Block> {
+fn prune(
+    blocks: &[Block],
+    selected: &HashSet<BlockId>,
+    start: TextPos,
+    end: TextPos,
+) -> Vec<Block> {
     let mut out = Vec::new();
     for block in blocks {
         let children = prune(&block.children, selected, start, end);
@@ -248,8 +260,16 @@ fn prune(blocks: &[Block], selected: &HashSet<BlockId>, start: TextPos, end: Tex
             continue;
         }
         let len = block.content.text.len();
-        let from = if block.id == start.block { start.offset } else { 0 };
-        let to = if block.id == end.block { end.offset } else { len };
+        let from = if block.id == start.block {
+            start.offset
+        } else {
+            0
+        };
+        let to = if block.id == end.block {
+            end.offset
+        } else {
+            len
+        };
         let content = if from <= to && to <= len && order::has_text(&block.kind) {
             inline_ops::slice(&block.content, from..to)
         } else {

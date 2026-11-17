@@ -128,7 +128,10 @@ impl EditorState {
         let index = at.col + usize::from(right);
         self.transact(EditKind::Other, None, "", move |tr, _| {
             let cells: Vec<_> = (0..at.rows).map(|_| new_cell(tr)).collect();
-            let target = cells.get(at.row).map(|c| c.id).ok_or(Abort::NotApplicable)?;
+            let target = cells
+                .get(at.row)
+                .map(|c| c.id)
+                .ok_or(Abort::NotApplicable)?;
             tr.step(Step::TableOp {
                 table: at.table,
                 op: TableOp::InsertColumn {
@@ -153,7 +156,11 @@ impl EditorState {
         if at.rows < 2 {
             return false;
         }
-        let row = if at.row + 1 < at.rows { at.row + 1 } else { at.row - 1 };
+        let row = if at.row + 1 < at.rows {
+            at.row + 1
+        } else {
+            at.row - 1
+        };
         let Some(next) = self.cell_id(at.table, row, at.col) else {
             return false;
         };
@@ -177,7 +184,11 @@ impl EditorState {
         if at.cols < 2 {
             return false;
         }
-        let col = if at.col + 1 < at.cols { at.col + 1 } else { at.col - 1 };
+        let col = if at.col + 1 < at.cols {
+            at.col + 1
+        } else {
+            at.col - 1
+        };
         let Some(next) = self.cell_id(at.table, at.row, col) else {
             return false;
         };
@@ -198,7 +209,11 @@ impl EditorState {
         let Some(at) = self.current_cell() else {
             return false;
         };
-        let to = if down { at.row + 1 } else { at.row.wrapping_sub(1) };
+        let to = if down {
+            at.row + 1
+        } else {
+            at.row.wrapping_sub(1)
+        };
         if to >= at.rows {
             return false;
         }
@@ -216,7 +231,11 @@ impl EditorState {
         let Some(at) = self.current_cell() else {
             return false;
         };
-        let to = if right { at.col + 1 } else { at.col.wrapping_sub(1) };
+        let to = if right {
+            at.col + 1
+        } else {
+            at.col.wrapping_sub(1)
+        };
         if to >= at.cols {
             return false;
         }

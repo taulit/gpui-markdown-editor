@@ -113,7 +113,10 @@ impl EditorState {
 
     /// The text of a UTF-16 range of the caret's node, with the range that
     /// was actually used after clamping.
-    pub(crate) fn text_for_range_utf16(&self, range: Range<usize>) -> Option<(String, Range<usize>)> {
+    pub(crate) fn text_for_range_utf16(
+        &self,
+        range: Range<usize>,
+    ) -> Option<(String, Range<usize>)> {
         let (_, text) = self.ime_node()?;
         let bytes = range_to_bytes(&text, &range);
         let actual = byte_to_utf16(&text, bytes.start)..byte_to_utf16(&text, bytes.end);

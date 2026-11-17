@@ -91,7 +91,12 @@ impl History {
                 last.inverse.steps = steps;
                 last.inverse.selection_before = inverse.selection_before;
                 for (id, dirty) in inverse.restore_dirty {
-                    if !last.inverse.restore_dirty.iter().any(|(known, _)| *known == id) {
+                    if !last
+                        .inverse
+                        .restore_dirty
+                        .iter()
+                        .any(|(known, _)| *known == id)
+                    {
                         last.inverse.restore_dirty.push((id, dirty));
                     }
                 }

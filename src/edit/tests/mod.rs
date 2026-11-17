@@ -30,9 +30,12 @@ pub(super) fn extensions() -> Extensions {
     Extensions::new(vec![Box::new(WikiLink), Box::new(Tag), Box::new(Highlight)])
 }
 
+/// A marker position: text stop ordinal and byte offset.
+type Marker = Option<(usize, usize)>;
+
 /// The position of each marker: text stop ordinal and byte offset in the
 /// text without markers.
-fn find_markers(doc: &Document) -> (Option<(usize, usize)>, Option<(usize, usize)>) {
+fn find_markers(doc: &Document) -> (Marker, Marker) {
     let mut caret = None;
     let mut anchor = None;
     let mut ordinal = 0;
@@ -70,15 +73,25 @@ fn pos_at(doc: &Document, ordinal: usize, offset: usize) -> TextPos {
 
 /// An editor state for Markdown with selection markers.
 pub(super) fn ed(marked: &str) -> EditorState {
-    let clean: String = marked.chars().filter(|c| *c != CARET && *c != ANCHOR).collect();
+    let clean: String = marked
+        .chars()
+        .filter(|c| *c != CARET && *c != ANCHOR)
+        .collect();
     let with_markers = Document::parse_with(marked, extensions());
     let (caret, anchor) = find_markers(&with_markers);
     let mut state = EditorState::new(Document::parse_with(&clean, extensions()));
     if let Some((ordinal, offset)) = caret {
         let head = pos_at(&state.doc, ordinal, offset);
         let anchor = anchor.map_or(head, |(o, off)| pos_at(&state.doc, o, off));
-        assert!(state.set_selection(Selection::Text { anchor, head }) || state.selection == Selection::Text { anchor, head });
-        assert_eq!(state.selection, Selection::Text { anchor, head }, "markers in {marked:?}");
+        assert!(
+            state.set_selection(Selection::Text { anchor, head })
+                || state.selection == Selection::Text { anchor, head }
+        );
+        assert_eq!(
+            state.selection,
+            Selection::Text { anchor, head },
+            "markers in {marked:?}"
+        );
     }
     state.take_changes();
     state
@@ -101,7 +114,7 @@ pub(super) fn caret(state: &EditorState) -> String {
             if anchor.block == head.block && anchor != head {
                 marks.push((anchor.offset, ANCHOR));
             }
-            marks.sort_by(|a, b| b.0.cmp(&a.0));
+            marks.sort_by_key(|mark| std::cmp::Reverse(mark.0));
             let mut out = text;
             for (offset, mark) in marks {
                 out.insert(offset, mark);
@@ -215,6 +228,21 @@ pub(super) fn check_invariants(state: &EditorState) -> Result<(), String> {
     if state.doc.blocks.is_empty() {
         return Err("no blocks".into());
     }
+    // The path index must agree with a search, whether patched or rebuilt.
+    let mut stop = order::first_stop(&state.doc);
+    while let Some(current) = stop {
+        for _ in 0..2 {
+            if state.locate(current.id) != Some(current.loc.clone()) {
+                return Err(format!(
+                    "index has {:?} for {:?} at {:?}",
+                    state.locate(current.id),
+                    current.id,
+                    current.loc
+                ));
+            }
+        }
+        stop = order::next_stop(&state.doc, &current.loc);
+    }
     match &state.selection {
         Selection::Text { anchor, head } => {
             for pos in [anchor, head] {
@@ -222,7 +250,10 @@ pub(super) fn check_invariants(state: &EditorState) -> Result<(), String> {
                     .text_of(pos.block)
                     .ok_or_else(|| format!("selection in missing node {pos:?}"))?;
                 if !inline.text.is_char_boundary(pos.offset) {
-                    return Err(format!("selection off boundary {pos:?} in {:?}", inline.text));
+                    return Err(format!(
+                        "selection off boundary {pos:?} in {:?}",
+                        inline.text
+                    ));
                 }
             }
         }

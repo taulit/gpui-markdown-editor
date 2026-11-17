@@ -31,8 +31,16 @@ impl EditorState {
             })
             .filter_map(|stop| {
                 let len = order::inline_at(&self.doc, &stop.loc)?.text.len();
-                let from = if stop.id == start.block { start.offset } else { 0 };
-                let to = if stop.id == end.block { end.offset } else { len };
+                let from = if stop.id == start.block {
+                    start.offset
+                } else {
+                    0
+                };
+                let to = if stop.id == end.block {
+                    end.offset
+                } else {
+                    len
+                };
                 (from < to).then_some((stop.id, from..to))
             })
             .collect()
@@ -139,14 +147,16 @@ impl EditorState {
                 return false;
             }
             return match (span, link) {
-                (Some(range), Some(link)) => self.transact(EditKind::Other, None, "", move |tr, sel| {
-                    tr.step(Step::AddMark {
-                        node: head.block,
-                        range,
-                        mark: link,
-                    })?;
-                    Ok(sel.clone())
-                }),
+                (Some(range), Some(link)) => {
+                    self.transact(EditKind::Other, None, "", move |tr, sel| {
+                        tr.step(Step::AddMark {
+                            node: head.block,
+                            range,
+                            mark: link,
+                        })?;
+                        Ok(sel.clone())
+                    })
+                }
                 (Some(range), None) => self.transact(EditKind::Other, None, "", move |tr, sel| {
                     tr.step(Step::RemoveMark {
                         node: head.block,
