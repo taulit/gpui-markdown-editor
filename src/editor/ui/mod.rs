@@ -64,13 +64,18 @@ pub(super) fn panel(palette: &Palette) -> Div {
         .rounded(px(14.))
         .border_1()
         .border_color(palette.hair)
-        .shadow(vec![BoxShadow {
-            color: hsla(0., 0., 0., 0.35),
-            offset: point(px(0.), px(10.)),
-            blur_radius: px(30.),
-            spread_radius: px(-6.),
-            inset: false,
-        }])
+        .shadow(vec![shadow()])
+}
+
+/// The popup shadow of plan 04: `0 10px 30px -6px rgba(0,0,0,.5)`.
+fn shadow() -> BoxShadow {
+    BoxShadow {
+        color: hsla(0., 0., 0., 0.5),
+        offset: point(px(0.), px(10.)),
+        blur_radius: px(30.),
+        spread_radius: px(-6.),
+        inset: false,
+    }
 }
 
 /// A square toolbar button (38 x 36 in the format bar), highlighted when
@@ -137,6 +142,14 @@ pub(super) fn overlay(position: Point<Pixels>, child: impl IntoElement) -> Div {
 mod tests {
     use super::*;
     use gpui::size;
+
+    #[test]
+    fn shadow_matches_the_design() {
+        let s = shadow();
+        assert_eq!(s.color.a, 0.5);
+        assert_eq!(s.offset, point(px(0.), px(10.)));
+        assert_eq!((s.blur_radius, s.spread_radius), (px(30.), px(-6.)));
+    }
 
     #[test]
     fn place_keeps_popups_inside_the_editor() {
