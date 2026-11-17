@@ -408,6 +408,54 @@ fn e3_slash() {
     }
 }
 
+const E3_LINK: &str = "\
+Saturday
+
+Market at 9, then the [bike shop](https://bikes.example/opening-hours). Remember the receipt for the wheel.
+
+Lunch at the lake if the weather holds.
+";
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_link() {
+    // "receipt" selected, Ctrl+K and a URL typed.
+    let select = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let text = editor.document().blocks()[1].text().to_string();
+        let start = text.find("receipt").unwrap();
+        let anchor = TextPos {
+            block,
+            offset: start,
+        };
+        let head = TextPos {
+            block,
+            offset: start + "receipt".len(),
+        };
+        editor.__set_selection(anchor, head, cx);
+    };
+    // The caret in the link shows the bubble.
+    let caret = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let pos = TextPos { block, offset: 26 };
+        editor.__set_selection(pos, pos, cx);
+    };
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        let mut typed = keys("ctrl-k");
+        typed.extend(keys_for("https://shop.example/receipts"));
+        capture_with_keys(
+            &format!("e3-link-{name}"),
+            mode,
+            E3_LINK,
+            select,
+            &[],
+            &typed,
+            None,
+        );
+        capture(&format!("e3-link-bubble-{name}"), mode, E3_LINK, caret);
+    }
+}
+
 fn write_gradient(path: &Path, width: u32, height: u32, from: [u8; 3], to: [u8; 3]) {
     let img = image::RgbaImage::from_fn(width, height, |x, y| {
         let t = (x as f32 / width as f32 + y as f32 / height as f32) / 2.;

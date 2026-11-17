@@ -82,10 +82,9 @@ impl MarkdownEditor {
             });
             let subscription =
                 cx.subscribe(&input, |this, _, event: &InputEvent, cx| match event {
-                    // The field also reports a change when nothing changed (on
-                    // Enter), which must not reset the current match.
+                    // The field may report a change when nothing changed, which
+                    // must not reset the current match.
                     InputEvent::Change if this.query_changed(cx) => this.refresh_find(true, cx),
-                    InputEvent::PressEnter { shift, .. } => this.find_step(!shift, cx),
                     _ => {}
                 });
             self.find = Some(FindBar {

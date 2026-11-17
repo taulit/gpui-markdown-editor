@@ -8,6 +8,7 @@
 //! a popup field never reach the document's bindings.
 
 pub(super) mod find;
+pub(super) mod link;
 pub(super) mod slash;
 
 use gpui::{

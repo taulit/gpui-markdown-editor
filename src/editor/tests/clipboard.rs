@@ -118,14 +118,19 @@ fn pasting_a_url_over_a_selection_links_it(cx: &mut TestAppContext) {
 fn ctrl_k_links_with_the_clipboard_url_and_unlinks(cx: &mut TestAppContext) {
     let (editor, cx) = open(cx, "a word here\n");
     range(&editor, cx, 0, 2, 6);
-    // Nothing to link to: no change.
+    // Nothing to link to: the link popover starts empty.
     set_clipboard(cx, "not a url");
     press(cx, "secondary-k");
+    press(cx, "enter");
     assert_eq!(md(&editor, cx), "a word here\n");
 
+    // A URL on the clipboard is suggested.
     set_clipboard(cx, "https://example.com");
     press(cx, "secondary-k");
+    press(cx, "enter");
     assert_eq!(md(&editor, cx), "a [word](https://example.com) here\n");
+    // Emptying the field removes the link.
     press(cx, "secondary-k");
+    press(cx, "backspace enter");
     assert_eq!(md(&editor, cx), "a word here\n");
 }

@@ -18,6 +18,9 @@ pub(crate) const CONTEXT: &str = "MarkdownEditor";
 /// The key context of the find bar.
 pub(crate) const FIND_CONTEXT: &str = "MarkdownEditorFind";
 
+/// The key context of the link popover.
+pub(crate) const PROMPT_CONTEXT: &str = "MarkdownEditorPrompt";
+
 actions!(
     markdown_editor,
     [
@@ -80,6 +83,8 @@ actions!(
         FindPrevious,
         CloseFind,
         ToggleFindCase,
+        ClosePrompt,
+        ApplyPrompt,
     ]
 );
 
@@ -188,8 +193,12 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
             ("ctrl-shift-end", Box::new(SelectDocEnd)),
         ]);
     }
+    // Enter is bound here (after the field's own binding, which lets it
+    // through) so that it is not typed into the field as well.
     let find: Vec<(&str, Box<dyn gpui::Action>)> = vec![
         ("escape", Box::new(CloseFind)),
+        ("enter", Box::new(FindNext)),
+        ("shift-enter", Box::new(FindPrevious)),
         ("secondary-f", Box::new(OpenFind)),
         ("f3", Box::new(FindNext)),
         ("shift-f3", Box::new(FindPrevious)),
@@ -208,6 +217,13 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
     };
     let mut all = load(CONTEXT, keys);
     all.extend(load(FIND_CONTEXT, find));
+    all.extend(load(
+        PROMPT_CONTEXT,
+        vec![
+            ("escape", Box::new(ClosePrompt)),
+            ("enter", Box::new(ApplyPrompt)),
+        ],
+    ));
     all
 }
 
@@ -368,6 +384,10 @@ impl MarkdownEditor {
                 }
             }
             Op::Paste => self.paste(cx),
+            Op::Link if self.options.ui.link_popover => {
+                self.open_link_prompt(window, cx);
+                return;
+            }
             Op::Link => self.toggle_link(cx),
             Op::Cancel => {
                 // Without a menu Escape belongs to the host.
@@ -452,8 +472,8 @@ impl MarkdownEditor {
         true
     }
 
-    /// Ctrl+K: removes the link at the caret or in the selection, or links
-    /// to the URL on the clipboard.
+    /// Ctrl+K without the link popover: removes the link at the caret or in
+    /// the selection, or links to the URL on the clipboard.
     fn toggle_link(&mut self, cx: &mut Context<Self>) {
         let link = Mark::Link {
             url: "".into(),

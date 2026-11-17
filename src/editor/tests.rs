@@ -9,6 +9,7 @@ mod editing;
 mod find;
 mod image;
 mod ime;
+mod link;
 mod mouse;
 mod slash;
 mod table;
