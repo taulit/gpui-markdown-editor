@@ -15,22 +15,13 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-- A sub-agent is fixing the E2 bug-review findings on `phase/e2-editing` (commits as `fix(edit): …`).
-  Items, each with a regression test in `src/edit/tests/`:
-  1. blocking: pending marks (Ctrl+E at a caret) only apply to the first typed character
-  2. Tab with a selection in a code block deletes the selection
-  3. copying part of one heading/list item keeps the block kind
-  4. multi-line plain-text paste into a list item breaks the list
-  5. select-all misses rules/images/tables at the document edges; cut leaves an empty table
-  6. IME preedit states become undo steps
-  7. Enter on an empty item in the middle of a list does not round-trip (tight list turns loose)
-  8. inline HTML is escaped after copy/paste
-  9. leading/trailing spaces are written as `&#32;` (also on the clipboard)
-  10. `InsertRule` leaves an empty trailing paragraph that changes the saved file
-- Check `git log origin/main..phase/e2-editing` for which of these landed; anything missing is still open.
+Nothing. The ten E2 bug-review findings are fixed on `phase/e2-editing` (commits `fix(edit): …`,
+`fix(markdown): …`), each with a regression test; the gate checks were re-run green afterwards and the
+E2 PR is open against `main`, tagged `v0.0.3`.
 
 ## Next
 
+0. Steps 1 and 2 are done; continue at 3 once the E2 PR is merged (rebase E3 onto `main` then).
 1. Verify the fixes: `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`,
    `cargo test --all-features`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`, `cargo deny check`,
    `scripts/screenshot.sh` (look at the PNGs).
@@ -44,6 +35,9 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 4. E4: criterion benchmarks, `docs/performance.md`, README with GIF, docs, reviews, `docs/release-checklist.md`, tag `v0.1.0`.
 
 ## Open, known and accepted for now
+
+- An empty paragraph between blocks is saved as `&#32;` (Markdown has no empty paragraph). Open question for the
+  user: keep, or drop empty paragraphs on save.
 
 - Enter in a quote starts a second quote instead of a new paragraph in the same quote (plan does not specify).
 - An edited paragraph that was hard-wrapped in the source is written on one line.

@@ -13,18 +13,18 @@ Read by other sessions. Keep terse.
 - `v0.0.2` (branch `phase/e1-api-model`): same API, real lossless parser and serializer, `WikiLink`/`Tag`/`Highlight`
   extensions work. Prefer this tag if you use `Document` headless (outline, open tasks, tags).
 
+- `v0.0.3` (branch `phase/e2-editing`): WYSIWYG editing. Same API plus `gpui_markdown_editor::init(cx)` (key
+  bindings; call after `gpui_component::init`, `MarkdownEditor::new` calls it if forgotten). Keyboard, mouse, IME,
+  clipboard (Markdown text), input rules, shortcuts, undo/redo. `is_dirty` follows the undo history. Tables render
+  read-only, images are placeholders, `FoldHeading`/`OpenFind` do nothing yet. See `CHANGELOG.md`.
+
 ## Done
 
 - E0: repo, toolchain, CI, versions pinned, assumptions verified (`docs/verified.md`).
 - E1: public API skeleton, document model, lossless parser and serializer, round-trip corpus (1354 spec examples and 33 notes byte-identical), offscreen screenshot harness (`scripts/screenshot.sh`).
 
-## In progress
-
-- E2 (branch `phase/e2-editing`, not tagged): WYSIWYG editing works. `MarkdownEditor` owns the editing core and
-  renders the document; keyboard, mouse, IME, clipboard (Markdown text), input rules, shortcuts, undo/redo.
-  New API: `gpui_markdown_editor::init(cx)` (key bindings; call after `gpui_component::init`). See "Status" in the
-  crate docs and `CHANGELOG.md`. Still open for the E2 gate: manual IME check on a desktop (dead keys, Compose,
-  ibus-pinyin).
+- E2: editing core, rendering element, keyboard, mouse, IME, clipboard, input rules, shortcuts, interaction tests.
+  Not done: manual IME check on a desktop (dead keys, Compose, ibus-pinyin); simulated only.
 
 ## Open
 

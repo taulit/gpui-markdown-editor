@@ -3,7 +3,7 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
-## [Unreleased]
+## [0.0.3]
 
 The editor edits the rendered document (WYSIWYG) instead of the Markdown
 source.
@@ -20,6 +20,9 @@ API changes:
 - Ctrl+click (Cmd+click on macOS) on a link, wiki link or tag emits
   `LinkClicked`, `WikiLinkClicked` or `TagClicked`; a plain click places the
   caret.
+- `Command::InsertRule` no longer adds a blank line after the rule to the
+  Markdown: an empty paragraph at the start or end of the document is not
+  written.
 - Removed the hidden preview switches `__set_rich_preview` and
   `__set_rich_selection` (`__set_selection` stays hidden, for screenshots).
 
@@ -44,6 +47,16 @@ What works:
   `scroll_to` scrolls.
 - Fixed: Ctrl+Alt+2 on a level-1 heading made it a paragraph instead of a
   level-2 heading.
+
+Markdown output:
+
+- An empty paragraph between two blocks is written as `&#32;` on its own
+  line and read back as an empty paragraph, because Markdown has no empty
+  paragraph. Files show this after pressing Enter twice between blocks.
+- Bold, italic and strike leave whitespace at the edges of the selection
+  unmarked, so the result reads back with the same marks.
+- Copying part of one block copies inline Markdown without the block marker;
+  spaces at the edges of copied text stay plain.
 
 ## [0.0.2]
 

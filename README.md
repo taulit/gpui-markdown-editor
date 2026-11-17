@@ -12,7 +12,7 @@ Early development. The API is unstable until 0.1. Changes between tags are liste
 
 ```toml
 [dependencies]
-gpui-markdown-editor = { git = "https://github.com/taulit/gpui-markdown-editor", tag = "v0.0.1-api" }
+gpui-markdown-editor = { git = "https://github.com/taulit/gpui-markdown-editor", tag = "v0.0.3" }
 ```
 
 This crate pins `gpui-pre =0.3.12` and `gpui-component =0.10.0`. Host applications must use the same versions.
