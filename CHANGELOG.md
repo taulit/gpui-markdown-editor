@@ -28,6 +28,10 @@ Release preparation (phase E5).
   still round-trip byte for byte, and undoing every edit restores them.
   Adding only an empty paragraph makes the editor dirty (`is_dirty`)
   although `markdown()` is unchanged.
+- Extensions contribute marks only (parser, serializer, `mark_style`,
+  `input_rule`, `click`, `slash_items`); their own inline nodes and block
+  renderers are not supported. Documented on `Extension`, in the crate
+  guide and the README.
 
 Benchmarks, motion and documentation (phase E4, part 1).
 
