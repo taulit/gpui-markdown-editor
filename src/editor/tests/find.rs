@@ -124,3 +124,26 @@ fn find_bar_can_be_turned_off(cx: &mut TestAppContext) {
     // The public search is independent of the bar.
     assert_eq!(editor.read_with(cx, |e, _| e.find("milk").len()), 4);
 }
+
+#[gpui::test]
+fn host_highlights_scroll_to_the_first_one(cx: &mut gpui::TestAppContext) {
+    let doc: String = (0..200).map(|i| format!("line {i}\n\n")).collect();
+    let (editor, cx) = open(cx, &doc);
+    let top = |editor: &gpui::Entity<MarkdownEditor>, cx: &mut gpui::VisualTestContext| {
+        editor.update_in(cx, |e, window, _| {
+            let ts = window.text_system().clone();
+            let view = e.view.clone();
+            view.query(e.layout_input(), &ts).scroll_top()
+        })
+    };
+    assert_eq!(top(&editor, cx), gpui::px(0.));
+    let before = caret(&editor, cx);
+    let hits = editor.read_with(cx, |e, _| e.find("line 150"));
+    assert_eq!(hits.len(), 1);
+    editor.update(cx, |e, cx| e.highlight(hits.clone(), cx));
+    cx.run_until_parked();
+    assert!(top(&editor, cx) > gpui::px(1000.));
+    assert_eq!(caret(&editor, cx), before, "the caret stays");
+    let target = point_of(&editor, cx, hits[0].start);
+    assert!(target.y > gpui::px(0.) && target.y < gpui::px(600.));
+}

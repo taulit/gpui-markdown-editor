@@ -288,9 +288,16 @@ impl MarkdownEditor {
     /// the host. Replaces the ranges set before. Pass an empty list to remove
     /// the highlights.
     ///
+    /// The first range is scrolled into view (the caret stays where it
+    /// is), unfolding a folded section that hides it.
+    ///
     /// Ranges belong to the content they were found in. They are dropped by
     /// [`set_markdown`](Self::set_markdown).
     pub fn highlight(&mut self, ranges: Vec<TextRange>, cx: &mut Context<Self>) {
+        if let Some(first) = ranges.first() {
+            self.unfold_around(first.start.block, cx);
+            self.view.request_reveal(*first);
+        }
         self.highlights = ranges;
         cx.notify();
     }
