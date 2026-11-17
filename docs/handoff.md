@@ -15,7 +15,8 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-Nothing. E3 is complete on `phase/e3-blocks-ui` (tag `v0.0.4`), PR open against `main`, waiting for the user.
+E3 PR: https://github.com/taulit/gpui-markdown-editor/pull/5 (tag `v0.0.4`), waiting for the user.
+E4 part 1 runs on `phase/e4-release` (stacked on E3): a sub-agent does benchmarks, `docs/performance.md`, motion, README and docs. Rebase onto `main` once PR 5 is merged.
 
 ## Next
 
