@@ -9,8 +9,9 @@ use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 use gpui::{
-    AppContext as _, Context, Entity, HeadlessAppContext, Hsla, IntoElement, ParentElement as _,
-    PlatformTextSystem, Render, Styled as _, Window, div, px, rgb, size,
+    AppContext as _, Context, Entity, HeadlessAppContext, Hsla, IntoElement, Modifiers,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PlatformInput,
+    PlatformTextSystem, Render, Styled as _, Window, div, point, px, rgb, size,
 };
 use gpui_component::{ActiveTheme as _, Root, Theme, ThemeMode};
 use gpui_markdown_editor::extensions::{Highlight, Tag, WikiLink};
@@ -139,6 +140,61 @@ fn e2_selection() {
     capture("e2-selection-dark", ThemeMode::Dark, E2_NOTE, select);
     capture("e2-caret-light", ThemeMode::Light, E2_NOTE, caret);
     capture("e2-caret-dark", ThemeMode::Dark, E2_NOTE, caret);
+
+    // Through the mouse: a click in the title, then a drag from the second
+    // paragraph line into the "Packing" list, and a double click on a word
+    // in the checklist.
+    let at = |x: f32, y: f32| point(px(x), px(y));
+    let down = |p, click_count| {
+        PlatformInput::MouseDown(MouseDownEvent {
+            button: MouseButton::Left,
+            position: p,
+            modifiers: Modifiers::default(),
+            click_count,
+            first_mouse: false,
+        })
+    };
+    let up = |p, click_count| {
+        PlatformInput::MouseUp(MouseUpEvent {
+            button: MouseButton::Left,
+            position: p,
+            modifiers: Modifiers::default(),
+            click_count,
+        })
+    };
+    let drag = |p| {
+        PlatformInput::MouseMove(MouseMoveEvent {
+            position: p,
+            pressed_button: Some(MouseButton::Left),
+            modifiers: Modifiers::default(),
+        })
+    };
+    let events = [
+        down(at(300., 100.), 1),
+        drag(at(400., 200.)),
+        drag(at(230., 225.)),
+        up(at(230., 225.), 1),
+    ];
+    capture_with_input(
+        "e2-mouse-drag-light",
+        ThemeMode::Light,
+        E2_NOTE,
+        rich,
+        &events,
+    );
+    let events = [
+        down(at(240., 482.), 1),
+        up(at(240., 482.), 1),
+        down(at(240., 482.), 2),
+        up(at(240., 482.), 2),
+    ];
+    capture_with_input(
+        "e2-mouse-word-dark",
+        ThemeMode::Dark,
+        E2_NOTE,
+        rich,
+        &events,
+    );
 }
 
 #[test]
@@ -194,6 +250,17 @@ fn capture(
     markdown: &str,
     setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
 ) {
+    capture_with_input(name, mode, markdown, setup, &[]);
+}
+
+/// Like [`capture`], dispatching `events` after the first frame.
+fn capture_with_input(
+    name: &str,
+    mode: ThemeMode,
+    markdown: &str,
+    setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
+    events: &[PlatformInput],
+) {
     // Every platform instance starts its own worker threads, so the text
     // system is taken from one platform and shared by all screenshots.
     static TEXT_SYSTEM: OnceLock<Arc<dyn PlatformTextSystem>> = OnceLock::new();
@@ -231,6 +298,17 @@ fn capture(
     cx.run_until_parked();
     cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
         .expect("failed to draw");
+    if !events.is_empty() {
+        cx.update_window(window.into(), |_, window, cx| {
+            for event in events {
+                window.dispatch_event(event.clone(), cx);
+            }
+        })
+        .expect("failed to dispatch input");
+        cx.run_until_parked();
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .expect("failed to draw");
+    }
 
     let image = cx
         .capture_screenshot(window.into())
