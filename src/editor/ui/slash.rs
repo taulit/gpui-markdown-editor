@@ -224,12 +224,17 @@ impl MarkdownEditor {
         let Some(text) = self.state.text_of(head.block).map(|t| t.text.as_str()) else {
             return;
         };
+        // An input rule may have rewritten the typed character: the slash
+        // must still be right before the caret.
         let start = head.offset - 1;
+        if literal || text.get(start..head.offset) != Some("/") {
+            return;
+        }
         let after_space = text[..start]
             .chars()
             .next_back()
             .is_none_or(char::is_whitespace);
-        if literal || text.get(start..head.offset) != Some("/") || !after_space {
+        if !after_space {
             return;
         }
         self.slash = Some(SlashMenu {

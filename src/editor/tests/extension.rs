@@ -156,3 +156,42 @@ fn custom_extension_hooks(cx: &mut TestAppContext) {
         Some(MarkColor::Fixed(gpui::red()))
     );
 }
+
+/// Rewrites a typed `/` into `÷` and `#` into `♯` (both multi-byte).
+struct Rewrite;
+
+impl Extension for Rewrite {
+    fn name(&self) -> &'static str {
+        "rewrite"
+    }
+
+    fn input_rule(&self, before: &str) -> Option<InlineMatch> {
+        let (from, to) = [("/", "÷"), ("#", "♯")]
+            .into_iter()
+            .find(|(from, _)| before.ends_with(from))?;
+        Some(InlineMatch {
+            range: before.len() - from.len()..before.len(),
+            text: to.to_string(),
+            mark: Mark::Custom {
+                id: CustomMarkId("rewrite"),
+                attr: None,
+            },
+        })
+    }
+}
+
+#[gpui::test]
+fn triggers_rewritten_by_an_input_rule_do_not_panic(cx: &mut TestAppContext) {
+    let options = EditorOptions {
+        extensions: vec![Box::new(Rewrite), Box::new(crate::extensions::Tag)],
+        completions: Some(std::sync::Arc::new(|_, _: &str| Vec::new())),
+        ..Default::default()
+    };
+    let (editor, cx) = open_with(cx, "", options);
+    type_text(cx, "a /");
+    type_text(cx, " #");
+    type_text(cx, "#");
+    let text = editor.read_with(cx, |e, _| e.document().blocks()[0].text().to_string());
+    assert!(text.contains('÷') && text.contains('♯'), "{text:?}");
+    assert!(editor.read_with(cx, |e, _| e.slash.is_none() && e.completion.is_none()));
+}

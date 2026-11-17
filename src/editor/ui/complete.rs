@@ -71,10 +71,10 @@ impl MarkdownEditor {
                 (CompletionKind::WikiLink, head.offset - 2)
             } else if typed == "#"
                 && self.has_extension("tag")
-                && before[..before.len() - 1]
-                    .chars()
-                    .next_back()
-                    .is_none_or(char::is_whitespace)
+                // An input rule may have rewritten the typed character.
+                && before
+                    .strip_suffix('#')
+                    .is_some_and(|b| b.chars().next_back().is_none_or(char::is_whitespace))
             {
                 (CompletionKind::Tag, head.offset - 1)
             } else {
