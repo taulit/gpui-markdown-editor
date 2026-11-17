@@ -200,7 +200,7 @@ impl DocumentView {
         cx: &mut gpui::App,
     ) -> bool {
         let mut state = self.state();
-        let resolver = resolver.map(|r| &**r as &dyn Fn(&str) -> Option<std::path::PathBuf>);
+        let resolver = resolver.map(|r| &**r as &images::Resolve);
         let mut changed = false;
         for src in srcs {
             let info = images::request(src, resolver, window, cx);

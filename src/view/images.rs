@@ -69,6 +69,7 @@ impl Asset for FileImageLoader {
     type Source = Arc<Path>;
     type Output = Result<Decoded, Arc<str>>;
 
+    #[allow(clippy::manual_async_fn)] // the future must be `Send + 'static`
     fn load(
         source: Self::Source,
         _cx: &mut App,
@@ -95,7 +96,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Decoded, String> {
         image
     };
     let mut rgba = image.into_rgba8();
-    for pixel in rgba.chunks_exact_mut(4) {
+    for pixel in rgba.as_chunks_mut::<4>().0 {
         pixel.swap(0, 2);
     }
     let frame = image::Frame::new(rgba);
@@ -105,6 +106,9 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Decoded, String> {
         height,
     })
 }
+
+/// A borrowed [`SrcResolver`](crate::options::SrcResolver).
+pub(crate) type Resolve = dyn Fn(&str) -> Option<PathBuf>;
 
 /// Where an image comes from.
 enum Source {
@@ -118,7 +122,7 @@ fn is_url(src: &str) -> bool {
 
 /// Resolves `src` with the host's resolver: local files through it, URLs
 /// as they are, absolute paths without a resolver.
-fn resolve(src: &str, resolver: Option<&dyn Fn(&str) -> Option<PathBuf>>) -> Option<Source> {
+fn resolve(src: &str, resolver: Option<&Resolve>) -> Option<Source> {
     if let Some(resolver) = resolver
         && let Some(path) = resolver(src)
     {
@@ -137,7 +141,7 @@ fn resolve(src: &str, resolver: Option<&dyn Fn(&str) -> Option<PathBuf>>) -> Opt
 /// when it is loaded) and returns its state now.
 pub(crate) fn request(
     src: &str,
-    resolver: Option<&dyn Fn(&str) -> Option<PathBuf>>,
+    resolver: Option<&Resolve>,
     window: &mut Window,
     cx: &mut App,
 ) -> ImageInfo {
@@ -176,7 +180,7 @@ pub(crate) fn request(
 
 /// Removes `src` from the asset cache, so that it is decoded again when it
 /// comes back into view.
-pub(crate) fn forget(src: &str, resolver: Option<&dyn Fn(&str) -> Option<PathBuf>>, cx: &mut App) {
+pub(crate) fn forget(src: &str, resolver: Option<&Resolve>, cx: &mut App) {
     match resolve(src, resolver) {
         Some(Source::File(path)) => cx.remove_asset::<FileImageLoader>(&path),
         Some(Source::Url(uri)) => cx.remove_asset::<ImageAssetLoader>(&Resource::Uri(uri)),
