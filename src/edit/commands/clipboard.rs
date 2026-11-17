@@ -88,6 +88,41 @@ impl EditorState {
         fragment.normalized()
     }
 
+    /// The selection as Markdown for the clipboard, without the final line
+    /// break, so that a copied word pastes as that word elsewhere.
+    pub(crate) fn copy_text(&self) -> String {
+        let mut text = self.selected_markdown();
+        let len = text.trim_end_matches('\n').len();
+        text.truncate(len);
+        text
+    }
+
+    /// Pastes clipboard text. A URL pasted over selected text links it;
+    /// text that parses as more than plain paragraphs is inserted as
+    /// Markdown; everything else, and everything in code and raw blocks and
+    /// table cells, as plain text.
+    pub(crate) fn paste_text(&mut self, text: &str) -> bool {
+        if text.is_empty() {
+            return false;
+        }
+        let selected =
+            matches!(&self.selection, Selection::Text { anchor, head } if anchor != head);
+        if selected && is_url(text.trim()) && !self.selected_segments().is_empty() {
+            return self.set_link(Some(text.trim()));
+        }
+        let literal_or_cell = self.selection.head().is_some_and(|head| {
+            self.locate(head.block).is_some_and(|loc| {
+                loc.is_cell()
+                    || order::block_at(&self.doc.blocks, loc.block_path())
+                        .is_some_and(|b| order::is_literal(&b.kind))
+            })
+        });
+        if literal_or_cell || is_plain(&Document::parse_with(text, self.doc.extensions.clone())) {
+            return self.insert_plain_text(text);
+        }
+        self.insert_markdown(text)
+    }
+
     /// Parses `markdown` and inserts its blocks at the selection. Text that
     /// is only paragraphs is inserted inline: the first paragraph joins the
     /// current block, the text after the caret joins the last.
@@ -301,4 +336,25 @@ fn flatten(blocks: &[Block], out: &mut String) {
         }
         flatten(&block.children, out);
     }
+}
+
+/// `true` if `text` is a single web or mail link.
+pub(crate) fn is_url(text: &str) -> bool {
+    let rest = ["https://", "http://", "mailto:"]
+        .iter()
+        .find_map(|scheme| text.strip_prefix(scheme));
+    rest.is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace))
+}
+
+/// `true` if a parsed fragment is only paragraphs without formatting.
+fn is_plain(fragment: &Document) -> bool {
+    fragment.blocks.iter().all(|block| {
+        block.kind == BlockKind::Paragraph
+            && block.children.is_empty()
+            && block
+                .content
+                .marks
+                .iter()
+                .all(|span| span.mark == crate::model::Mark::Raw)
+    })
 }

@@ -10,10 +10,6 @@
 //! Points passed in and bounds returned are in window coordinates, like the
 //! positions of mouse events.
 
-// The geometry queries are the interface for the input wiring, which is not
-// connected yet; the preview mode uses only some of them.
-#![allow(dead_code)]
-
 mod element;
 mod geometry;
 mod layout;
@@ -29,7 +25,10 @@ use std::cell::{RefCell, RefMut};
 use std::ops::Range;
 use std::rc::Rc;
 
-use gpui::{Pixels, WindowTextSystem};
+use gpui::{
+    Bounds, Context, EntityInputHandler, FocusHandle, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    Pixels, Window, WindowTextSystem,
+};
 
 use crate::edit::Selection;
 use crate::model::{BlockId, Document, TextRange};
@@ -63,9 +62,16 @@ pub(crate) struct ViewInput<'a> {
     pub marked: Option<(BlockId, Range<usize>)>,
 }
 
-/// An entity a [`DocumentElement`] can render.
-pub(crate) trait ViewSource: 'static {
+/// An entity a [`DocumentElement`] can render. The element routes text
+/// input to it while `focus_handle` is focused, and mouse events over the
+/// document (and, during a drag, anywhere) to the `mouse_*` methods.
+pub(crate) trait ViewSource: EntityInputHandler {
     fn view_input(&self) -> ViewInput<'_>;
+    fn input_focus(&self) -> &FocusHandle;
+    fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>);
+    /// A mouse move while the left button is pressed.
+    fn mouse_drag(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>);
+    fn mouse_up(&mut self, event: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>);
 }
 
 /// The view state of one editor, shared by the editor and its element.
@@ -116,6 +122,11 @@ impl DocumentView {
         ViewQuery::new(state, input, ts)
     }
 
+    /// The bounds of the element in the last frame, in window coordinates.
+    pub fn bounds(&self) -> Bounds<Pixels> {
+        self.state.borrow().bounds
+    }
+
     /// Counters for tests and timing.
     pub fn stats(&self) -> ViewStats {
         self.state.borrow().stats()
@@ -126,7 +137,7 @@ impl DocumentView {
     fn prepare_frame(
         &self,
         input: &ViewInput<'_>,
-        bounds: gpui::Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         ts: &WindowTextSystem,
     ) -> paint::Frame {
         let mut state = self.state();

@@ -9,9 +9,10 @@ use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 use gpui::{
-    AppContext as _, Context, Entity, HeadlessAppContext, Hsla, IntoElement, Modifiers,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PlatformInput,
-    PlatformTextSystem, Render, Styled as _, Window, div, point, px, rgb, size,
+    AppContext as _, Context, Entity, Focusable as _, HeadlessAppContext, Hsla, IntoElement,
+    Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement as _, PlatformInput, PlatformTextSystem, Render, Styled as _, Window, div, point,
+    px, rgb, size,
 };
 use gpui_component::{ActiveTheme as _, Root, Theme, ThemeMode};
 use gpui_markdown_editor::extensions::{Highlight, Tag, WikiLink};
@@ -89,13 +90,12 @@ fn e1_basic() {
 #[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
 fn e2_note() {
     for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
-        capture(&format!("e2-note-{name}"), mode, E2_NOTE, rich);
+        capture(&format!("e2-note-{name}"), mode, E2_NOTE, |_, _| {});
         capture(
             &format!("e2-note-end-{name}"),
             mode,
             E2_NOTE,
             |editor, cx| {
-                rich(editor, cx);
                 let last = editor.document().blocks().last().unwrap().id();
                 let pos = TextPos {
                     block: last,
@@ -117,7 +117,6 @@ fn e2_note() {
 #[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
 fn e2_selection() {
     let select = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
-        rich(editor, cx);
         let blocks = editor.document().blocks();
         // From the middle of the first paragraph into the first list item.
         let anchor = TextPos {
@@ -128,13 +127,12 @@ fn e2_selection() {
             block: blocks[3].id(),
             offset: 4,
         };
-        editor.__set_rich_selection(anchor, head, cx);
+        editor.__set_selection(anchor, head, cx);
     };
     let caret = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
-        rich(editor, cx);
         let block = editor.document().blocks()[1].id();
         let pos = TextPos { block, offset: 21 };
-        editor.__set_rich_selection(pos, pos, cx);
+        editor.__set_selection(pos, pos, cx);
     };
     capture("e2-selection-light", ThemeMode::Light, E2_NOTE, select);
     capture("e2-selection-dark", ThemeMode::Dark, E2_NOTE, select);
@@ -179,7 +177,7 @@ fn e2_selection() {
         "e2-mouse-drag-light",
         ThemeMode::Light,
         E2_NOTE,
-        rich,
+        |_, _| {},
         &events,
     );
     let events = [
@@ -192,7 +190,7 @@ fn e2_selection() {
         "e2-mouse-word-dark",
         ThemeMode::Dark,
         E2_NOTE,
-        rich,
+        |_, _| {},
         &events,
     );
 }
@@ -202,19 +200,38 @@ fn e2_selection() {
 fn e2_long() {
     let markdown = long_document(10_000);
     let scroll = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
-        rich(editor, cx);
         let block = editor.document().blocks()[5_000].id();
         let pos = TextPos { block, offset: 0 };
-        editor.scroll_to(
-            TextRange {
-                start: pos,
-                end: pos,
-            },
-            cx,
-        );
+        editor.__set_selection(pos, pos, cx);
     };
     capture("e2-long-light", ThemeMode::Light, &markdown, scroll);
     capture("e2-long-dark", ThemeMode::Dark, &markdown, scroll);
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e2_typing() {
+    // Typed into an empty note: the input rules make a heading, a checklist
+    // and bold text.
+    let typed = "Shopping\n## Market\n[] Apples\nBread\nCheese\n\nOnly **organic** milk, and ~~no~~ *sugar*.";
+    let keys: Vec<String> = typed
+        .chars()
+        .map(|ch| match ch {
+            '\n' => "enter".to_string(),
+            ' ' => "space".to_string(),
+            ch => ch.to_string(),
+        })
+        .collect();
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture_with_keys(
+            &format!("e2-typing-{name}"),
+            mode,
+            "",
+            |_, _| {},
+            &[],
+            &keys,
+        );
+    }
 }
 
 /// A document of `lines` lines: sections with paragraphs and lists.
@@ -234,11 +251,6 @@ fn long_document(lines: usize) -> String {
         section += 1;
     }
     md
-}
-
-/// Switches the editor to the rendered document.
-fn rich(editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>) {
-    editor.__set_rich_preview(true, cx);
 }
 
 /// Renders `markdown` in a 900x700 window with the Sheaf look and writes it
@@ -261,6 +273,19 @@ fn capture_with_input(
     setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
     events: &[PlatformInput],
 ) {
+    capture_with_keys(name, mode, markdown, setup, events, &[]);
+}
+
+/// Like [`capture_with_input`], typing `keys` (keystrokes such as `a`,
+/// `space`, `enter`) after the events.
+fn capture_with_keys(
+    name: &str,
+    mode: ThemeMode,
+    markdown: &str,
+    setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
+    events: &[PlatformInput],
+    keys: &[String],
+) {
     // Every platform instance starts its own worker threads, so the text
     // system is taken from one platform and shared by all screenshots.
     static TEXT_SYSTEM: OnceLock<Arc<dyn PlatformTextSystem>> = OnceLock::new();
@@ -274,6 +299,7 @@ fn capture_with_input(
     );
     cx.update(|cx| {
         gpui_component::init(cx);
+        gpui_markdown_editor::init(cx);
         apply_sheaf_theme(mode, cx);
     });
 
@@ -291,6 +317,8 @@ fn capture_with_input(
                 setup(&mut editor, cx);
                 editor
             });
+            // The caret is only drawn in a focused editor.
+            editor.focus_handle(cx).focus(window, cx);
             let page = cx.new(|_| Page { editor });
             cx.new(|cx| Root::new(page, window, cx))
         })
@@ -298,10 +326,15 @@ fn capture_with_input(
     cx.run_until_parked();
     cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
         .expect("failed to draw");
-    if !events.is_empty() {
+    if !events.is_empty() || !keys.is_empty() {
         cx.update_window(window.into(), |_, window, cx| {
             for event in events {
                 window.dispatch_event(event.clone(), cx);
+            }
+            let os = cx.platform_info().os;
+            for key in keys {
+                let keystroke = Keystroke::parse_with_os(key, os).expect("keystroke");
+                window.dispatch_keystroke(keystroke, cx);
             }
         })
         .expect("failed to dispatch input");

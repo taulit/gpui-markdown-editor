@@ -180,6 +180,22 @@ impl EditorState {
         self.set_checked(tasks, target)
     }
 
+    /// Ticks or unticks one task item (a click on its checkbox), keeping
+    /// the selection.
+    pub(crate) fn toggle_task_item(&mut self, id: BlockId) -> bool {
+        let checked = self
+            .locate(id)
+            .and_then(|loc| order::block_at(&self.doc.blocks, loc.block_path()))
+            .and_then(|block| match block.kind {
+                BlockKind::TaskItem { checked } => Some(checked),
+                _ => None,
+            });
+        match checked {
+            Some(checked) => self.set_checked(vec![(id, checked)], !checked),
+            None => false,
+        }
+    }
+
     fn set_checked(&mut self, tasks: Vec<(BlockId, bool)>, target: bool) -> bool {
         let changes: Vec<BlockId> = tasks
             .into_iter()

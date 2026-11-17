@@ -27,6 +27,9 @@ pub(crate) enum EditKind {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Entry {
+    /// Identifies the entry for [`History::position`]; kept when typing
+    /// merges into it.
+    id: u64,
     pub(crate) forward: Transaction,
     pub(crate) inverse: Transaction,
     kind: EditKind,
@@ -41,6 +44,9 @@ pub(crate) struct History {
     redo: Vec<Entry>,
     /// Set when the selection moved: the next edit starts a new entry.
     sealed: bool,
+    last_id: u64,
+    /// The position with an empty undo stack.
+    base: u64,
 }
 
 impl History {
@@ -48,6 +54,16 @@ impl History {
         self.undo.clear();
         self.redo.clear();
         self.sealed = false;
+        // A new base: the content no longer matches any earlier position.
+        self.last_id += 1;
+        self.base = self.last_id;
+    }
+
+    /// Identifies the current state of the document in the history: equal
+    /// positions mean equal content. Call [`Self::seal`] when remembering a
+    /// position, so that further typing does not merge into its entry.
+    pub(crate) fn position(&self) -> u64 {
+        self.undo.last().map_or(self.base, |entry| entry.id)
     }
 
     /// The next edit does not merge with the last entry.
@@ -105,7 +121,9 @@ impl History {
                 return;
             }
         }
+        self.last_id += 1;
         self.undo.push(Entry {
+            id: self.last_id,
             forward,
             inverse,
             kind,

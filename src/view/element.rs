@@ -1,17 +1,18 @@
 //! The GPUI element that paints a document.
 
 use gpui::{
-    App, Bounds, CursorStyle, DispatchPhase, Element, ElementId, Entity, GlobalElementId, Hitbox,
-    HitboxBehavior, InspectorElementId, IntoElement, LayoutId, Pixels, ScrollEvent, Style, Window,
-    px, relative,
+    App, Bounds, CursorStyle, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId,
+    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Point, ScrollEvent, Style, Window, px, relative,
 };
 
 use super::paint::Frame;
-use super::{DocumentView, ViewSource};
+use super::{DocumentView, LayoutInput, ViewSource};
 
 /// Paints the document of `source` with the state of `view`, filling the
-/// space it is given. Scrolls with the mouse wheel on its own; everything
-/// else (clicks, keys) is up to the owner, using the view's geometry queries.
+/// space it is given. Scrolls with the mouse wheel on its own, hands text
+/// input and mouse events to `source` and sets the mouse cursor.
 pub(crate) struct DocumentElement<T: ViewSource> {
     view: DocumentView,
     source: Entity<T>,
@@ -31,9 +32,34 @@ impl<T: ViewSource> IntoElement for DocumentElement<T> {
     }
 }
 
+pub(crate) struct Prepaint {
+    frame: Frame,
+    hitbox: Hitbox,
+    cursor: CursorStyle,
+}
+
+/// The mouse cursor over `p`: a pointer over checkboxes, and over links
+/// while the secondary modifier (Ctrl, Cmd on macOS) is held, because a
+/// plain click on a link places the caret.
+fn cursor_at(
+    view: &DocumentView,
+    input: LayoutInput<'_>,
+    p: Point<Pixels>,
+    window: &Window,
+    cx: &App,
+) -> CursorStyle {
+    let ts = window.text_system().clone();
+    let mut q = view.query(input, &ts);
+    if q.checkbox_at(p).is_some() || (window.modifiers().secondary(cx) && q.link_at(p).is_some()) {
+        CursorStyle::PointingHand
+    } else {
+        CursorStyle::IBeam
+    }
+}
+
 impl<T: ViewSource> Element for DocumentElement<T> {
     type RequestLayoutState = ();
-    type PrepaintState = (Frame, Hitbox);
+    type PrepaintState = Prepaint;
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -66,38 +92,106 @@ impl<T: ViewSource> Element for DocumentElement<T> {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let ts = window.text_system().clone();
-        let input = self.source.read(cx).view_input();
+        let source = self.source.read(cx);
+        let input = source.view_input();
         let frame = self.view.prepare_frame(&input, bounds, &ts);
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-        (frame, hitbox)
+        let cursor = cursor_at(
+            &self.view,
+            input.layout,
+            window.mouse_position(),
+            window,
+            cx,
+        );
+        Prepaint {
+            frame,
+            hitbox,
+            cursor,
+        }
     }
 
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         prepaint: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        let (frame, hitbox) = prepaint;
-        window.set_cursor_style(CursorStyle::IBeam, hitbox);
-        frame.paint(window, cx);
+        let focus = self.source.read(cx).input_focus().clone();
+        window.handle_input(
+            &focus,
+            ElementInputHandler::new(bounds, self.source.clone()),
+            cx,
+        );
+        let hitbox = prepaint.hitbox.clone();
+        let cursor = prepaint.cursor;
+        window.set_cursor_style(cursor, &hitbox);
+        prepaint.frame.paint(window, cx);
 
         let view = self.view.clone();
-        let source = self.source.entity_id();
-        let hitbox = hitbox.clone();
+        let source = self.source.clone();
+        let scroll_hitbox = hitbox.clone();
         window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !hitbox.is_hovered(window) {
+            if phase != DispatchPhase::Bubble || !scroll_hitbox.is_hovered(window) {
                 return;
             }
             let dy = event.delta.pixel_delta(px(20.)).y;
             if dy != Pixels::ZERO {
                 view.state().scroll_by(-dy);
-                cx.notify(source);
+                cx.notify(source.entity_id());
                 cx.stop_propagation();
+            }
+        });
+
+        let source = self.source.clone();
+        let down_hitbox = hitbox.clone();
+        window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+            if phase == DispatchPhase::Bubble
+                && event.button == MouseButton::Left
+                && down_hitbox.is_hovered(window)
+            {
+                source.update(cx, |source, cx| source.mouse_down(event, window, cx));
+                cx.stop_propagation();
+            }
+        });
+
+        let source = self.source.clone();
+        let view = self.view.clone();
+        let move_hitbox = hitbox.clone();
+        window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
+            if phase != DispatchPhase::Bubble {
+                return;
+            }
+            if event.pressed_button == Some(MouseButton::Left) {
+                source.update(cx, |source, cx| source.mouse_drag(event, window, cx));
+            } else if move_hitbox.is_hovered(window) {
+                let now = cursor_at(
+                    &view,
+                    source.read(cx).view_input().layout,
+                    event.position,
+                    window,
+                    cx,
+                );
+                if now != cursor {
+                    cx.notify(source.entity_id());
+                }
+            }
+        });
+
+        let source = self.source.clone();
+        window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
+            if phase == DispatchPhase::Bubble && event.button == MouseButton::Left {
+                source.update(cx, |source, cx| source.mouse_up(event, window, cx));
+            }
+        });
+
+        let source = self.source.entity_id();
+        window.on_modifiers_changed(move |_: &ModifiersChangedEvent, window, cx| {
+            if hitbox.is_hovered(window) {
+                cx.notify(source);
             }
         });
     }

@@ -49,19 +49,22 @@ impl EditorState {
         Some((head.block, text))
     }
 
+    /// The marked range if it still fits the caret's node.
+    pub(crate) fn valid_marked(&self) -> Option<(BlockId, Range<usize>)> {
+        let (node, range) = self.marked.clone()?;
+        let head = self.selection.head()?;
+        let text = &self.text_of(head.block)?.text;
+        let fits = head.block == node
+            && range.start <= range.end
+            && range.end <= text.len()
+            && text.is_char_boundary(range.start)
+            && text.is_char_boundary(range.end);
+        fits.then_some((node, range))
+    }
+
     /// Drops the marked range if it no longer fits the caret's node.
     fn validate_marked(&mut self) {
-        let Some((node, range)) = self.marked.clone() else {
-            return;
-        };
-        let fits = self.ime_node().is_some_and(|(head_node, text)| {
-            head_node == node
-                && range.start <= range.end
-                && range.end <= text.len()
-                && text.is_char_boundary(range.start)
-                && text.is_char_boundary(range.end)
-        });
-        if !fits {
+        if self.valid_marked().is_none() {
             self.marked = None;
         }
     }
@@ -79,17 +82,19 @@ impl EditorState {
     }
 
     /// The marked range in UTF-16 offsets of the caret's node.
-    pub(crate) fn marked_range_utf16(&mut self) -> Option<Range<usize>> {
-        self.validate_marked();
-        let (_, range) = self.marked.clone()?;
+    pub(crate) fn marked_range_utf16(&self) -> Option<Range<usize>> {
+        let (_, range) = self.valid_marked()?;
         let (_, text) = self.ime_node()?;
         Some(byte_to_utf16(&text, range.start)..byte_to_utf16(&text, range.end))
     }
 
-    /// The marked range in bytes, if any.
-    pub(crate) fn marked_range(&mut self) -> Option<(BlockId, Range<usize>)> {
-        self.validate_marked();
-        self.marked.clone()
+    /// The UTF-16 range `range` of the caret's node in bytes, clamped.
+    pub(crate) fn utf16_range_to_bytes(
+        &self,
+        range: &Range<usize>,
+    ) -> Option<(BlockId, Range<usize>)> {
+        let (node, text) = self.ime_node()?;
+        Some((node, range_to_bytes(&text, range)))
     }
 
     /// The selection in UTF-16 offsets of the caret's node, and whether it
@@ -164,7 +169,8 @@ impl EditorState {
         text: &str,
         now: Instant,
     ) -> bool {
-        let had_marked = self.marked_range().is_some();
+        self.validate_marked();
+        let had_marked = self.marked.is_some();
         if let Some((node, range)) = self.ime_target(range_utf16) {
             self.select_for_ime(node, range);
         }

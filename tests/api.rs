@@ -9,7 +9,10 @@ use gpui_markdown_editor::{
 };
 
 fn open_editor(cx: &mut TestAppContext) -> (Entity<MarkdownEditor>, &mut VisualTestContext) {
-    cx.update(gpui_component::init);
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        gpui_markdown_editor::init(cx);
+    });
     let (editor, cx) =
         cx.add_window_view(|window, cx| MarkdownEditor::new(window, cx, EditorOptions::default()));
     cx.update(|window, cx| editor.focus_handle(cx).focus(window, cx));
@@ -59,7 +62,7 @@ fn markdown_round_trips_byte_for_byte(cx: &mut TestAppContext) {
         "",
     ] {
         editor.update(cx, |editor, cx| editor.set_markdown(source, cx));
-        // Readable before the next frame hands the text to the input.
+        // Readable before the next frame.
         assert_eq!(editor.read_with(cx, |editor, _| editor.markdown()), source);
 
         cx.run_until_parked();
@@ -79,10 +82,11 @@ fn typing_edits_marks_dirty_and_emits_changed(cx: &mut TestAppContext) {
     set_markdown(&editor, cx, "line one\r\nline two");
     assert_eq!(changes(&events), 0, "set_markdown must not emit Changed");
 
-    // The cursor is at the start after loading.
+    // The cursor is at the start after loading. The edited paragraph is
+    // written normalized: a soft line break is a space in the model.
     cx.simulate_input("ab");
     editor.read_with(cx, |editor, _| {
-        assert_eq!(editor.markdown(), "abline one\r\nline two");
+        assert_eq!(editor.markdown(), "abline one line two");
         assert!(editor.is_dirty());
     });
     assert_eq!(changes(&events), 2);
@@ -118,17 +122,22 @@ fn text_commands_edit_the_content(cx: &mut TestAppContext) {
 
             editor.command(Command::SelectAll, window, cx);
             editor.command(Command::InsertMarkdown("# New\n".into()), window, cx);
-            assert_eq!(editor.markdown(), "# New\n");
+            assert_eq!(editor.markdown(), "# New");
 
-            // Commands without an implementation yet are accepted.
+            // Commands that do not apply change nothing; view commands of
+            // the next phase are accepted.
             editor.command(Command::ToggleTask, window, cx);
-            editor.command(Command::InsertTable { rows: 2, cols: 2 }, window, cx);
             editor.command(Command::OpenFind, window, cx);
-            assert_eq!(editor.markdown(), "# New\n");
+            editor.command(Command::FoldHeading, window, cx);
+            assert_eq!(editor.markdown(), "# New");
+
+            // A rule is followed by an empty paragraph for the caret.
+            editor.command(Command::InsertRule, window, cx);
+            assert_eq!(editor.markdown(), "# New\n\n---\n\n");
         });
     });
     cx.run_until_parked();
-    assert_eq!(changes(&events), 2);
+    assert_eq!(changes(&events), 3);
 }
 
 #[gpui::test]

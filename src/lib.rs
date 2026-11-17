@@ -107,7 +107,7 @@ pub mod style;
 mod view;
 
 pub use command::Command;
-pub use editor::MarkdownEditor;
+pub use editor::{MarkdownEditor, init};
 pub use event::EditorEvent;
 pub use extension::{Extension, Extensions, InlineMatch};
 pub use meta::DocMeta;

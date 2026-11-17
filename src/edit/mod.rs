@@ -24,6 +24,6 @@ pub(crate) mod transaction;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use commands::clipboard::is_url;
 pub(crate) use selection::Selection;
-#[allow(unused_imports)] // the view's entry points, wired next
-pub(crate) use state::{Changes, EditorState, Unit};
+pub(crate) use state::{EditorState, Unit};
