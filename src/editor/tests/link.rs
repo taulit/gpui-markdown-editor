@@ -156,3 +156,15 @@ fn without_the_popover_ctrl_k_uses_the_clipboard(cx: &mut TestAppContext) {
     select_in_first(&editor, cx, 2..2);
     assert!(cx.debug_bounds("link-url").is_none(), "no bubble");
 }
+
+#[gpui::test]
+fn links_and_tags_use_the_accent_color(cx: &mut gpui::TestAppContext) {
+    let (editor, cx) = open(cx, "");
+    let (style, primary) = editor.read_with(cx, |e, cx| {
+        use gpui_component::ActiveTheme as _;
+        (e.style().clone(), cx.theme().primary)
+    });
+    assert_eq!(style.link_color, primary);
+    assert_eq!(style.tag_color, primary);
+    assert_eq!(style.quote_bar_color, primary);
+}

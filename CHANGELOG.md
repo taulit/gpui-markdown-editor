@@ -40,6 +40,8 @@ After review (part 3):
   (format bar, menu, keys) and their undo and redo, also undoing the
   deletion of a whole table.
 - Fixed a panic when an extension's input rule rewrote a typed `/` or `#`.
+- `EditorStyle::from_theme`: links, wiki links and tags use the accent
+  (the theme's `primary` color) instead of the theme's `link` color.
 
 API changes (part 2, editor UI):
 
