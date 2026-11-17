@@ -15,6 +15,9 @@ pub(crate) enum Selection {
     },
     /// A block selected as a whole: an image, rule or table.
     Node(BlockId),
+    /// The whole document, including image, rule and table blocks at its
+    /// edges (the second Ctrl+A, or `Command::SelectAll`).
+    All,
 }
 
 impl Selection {
@@ -35,7 +38,7 @@ impl Selection {
     pub(crate) fn head(&self) -> Option<TextPos> {
         match self {
             Self::Text { head, .. } => Some(*head),
-            Self::Node(_) => None,
+            Self::Node(_) | Self::All => None,
         }
     }
 }

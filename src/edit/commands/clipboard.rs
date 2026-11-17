@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::edit::Selection;
+use crate::edit::commands::text::delete_selected;
 use crate::edit::history::EditKind;
 use crate::edit::inline_ops;
 use crate::edit::ops::{Abort, EditResult};
@@ -53,6 +54,7 @@ impl EditorState {
                 .and_then(|loc| order::block_at(&self.doc.blocks, loc.block_path()))
                 .map(|block| vec![detach(block.clone())])
                 .unwrap_or_default(),
+            Selection::All => self.doc.blocks.iter().cloned().map(detach_all).collect(),
             Selection::Text { .. } => {
                 let Some((start, end)) = self.ordered() else {
                     return String::new();
@@ -156,9 +158,9 @@ impl EditorState {
             let blocks: Vec<Block> = blocks.into_iter().map(|b| fresh(tr, b)).collect();
             match selection {
                 Selection::Node(id) => insert_blocks_after(tr, id, blocks),
-                Selection::Text { .. } => {
-                    let (start, end) = range.ok_or(Abort::NotApplicable)?;
-                    let pos = tr.delete_range(start, end)?;
+                Selection::Text { .. } | Selection::All => {
+                    let all = selection == Selection::All;
+                    let pos = delete_selected(tr, all, range)?;
                     if tr.is_cell(pos.block) {
                         let mut text = String::new();
                         flatten(&blocks, &mut text);
@@ -271,6 +273,12 @@ fn fresh(tr: &mut Tr<'_>, mut block: Block) -> Block {
         .map(|child| fresh(tr, child))
         .collect();
     block
+}
+
+/// A copy of a block and its children outside its document.
+fn detach_all(mut block: Block) -> Block {
+    block.children = block.children.into_iter().map(detach_all).collect();
+    detach(block)
 }
 
 /// A copy of a block outside its document.

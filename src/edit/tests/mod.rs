@@ -108,6 +108,7 @@ pub(super) fn caret(state: &EditorState) -> String {
                 .unwrap_or_default();
             format!("<node {kind}>")
         }
+        Selection::All => "<all>".to_string(),
         Selection::Text { anchor, head } => {
             let text = state.text_of(head.block).expect("caret node").text.clone();
             let mut marks = vec![(head.offset, CARET)];
@@ -267,6 +268,7 @@ pub(super) fn check_invariants(state: &EditorState) -> Result<(), String> {
                 return Err("text block selected as node".into());
             }
         }
+        Selection::All => {}
     }
     if let Some((node, range)) = &state.marked {
         let inline = state.text_of(*node).ok_or("marked node missing")?;

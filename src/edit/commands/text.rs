@@ -40,39 +40,42 @@ impl EditorState {
             return self.type_after_node(id, text);
         }
         let pending = self.pending_marks.take();
-        let node = self.selection.head().map_or(BlockId(0), |head| head.block);
+        // Marks toggled at a caret stay active for the text typed after it,
+        // until the caret moves.
+        let keep = pending.clone().filter(|_| self.selection.is_caret());
+        let all = self.selection == Selection::All;
+        let kind = match self.selection.head() {
+            Some(head) if !all => EditKind::Insert { node: head.block },
+            _ => EditKind::Other,
+        };
         let text = text.to_string();
         let typed = text.clone();
         let range = self.ordered();
-        self.transact(
-            EditKind::Insert { node },
-            Some(now),
-            &typed,
-            move |tr, _| {
-                let Some((start, end)) = range else {
-                    return Err(Abort::NotApplicable);
-                };
-                let pos = tr.delete_range(start, end)?;
-                let text = if tr.is_cell(pos.block) {
-                    text.replace(['\n', '\r'], " ")
-                } else {
-                    text
-                };
-                let mut marks = match pending {
-                    Some(marks) => marks,
-                    None => inline_ops::marks_at(tr.inline(pos.block)?, pos.offset),
-                };
-                if text.contains('\n') {
-                    // Inline code cannot hold a line break.
-                    marks.retain(|mark| *mark != Mark::Code);
-                }
-                let offset = tr.insert_typed(pos, &text, &marks)?;
-                Ok(Selection::caret(TextPos {
-                    block: pos.block,
-                    offset,
-                }))
-            },
-        )
+        let done = self.transact(kind, Some(now), &typed, move |tr, _| {
+            let pos = delete_selected(tr, all, range)?;
+            let text = if tr.is_cell(pos.block) {
+                text.replace(['\n', '\r'], " ")
+            } else {
+                text
+            };
+            let mut marks = match pending {
+                Some(marks) => marks,
+                None => inline_ops::marks_at(tr.inline(pos.block)?, pos.offset),
+            };
+            if text.contains('\n') {
+                // Inline code cannot hold a line break.
+                marks.retain(|mark| *mark != Mark::Code);
+            }
+            let offset = tr.insert_typed(pos, &text, &marks)?;
+            Ok(Selection::caret(TextPos {
+                block: pos.block,
+                offset,
+            }))
+        });
+        if done && keep.is_some() {
+            self.pending_marks = keep;
+        }
+        done
     }
 
     /// Typing while a node is selected starts a paragraph below it.
@@ -93,6 +96,9 @@ impl EditorState {
     pub(crate) fn delete_selection(&mut self) -> bool {
         match self.selection.clone() {
             Selection::Node(id) => self.delete_node(id),
+            Selection::All => self.transact(EditKind::Other, None, "", move |tr, _| {
+                Ok(Selection::caret(tr.clear_all()?))
+            }),
             Selection::Text { anchor, head } if anchor != head => {
                 let Some((start, end)) = self.ordered() else {
                     return false;
@@ -325,6 +331,9 @@ impl EditorState {
                 }))
             });
         }
+        if self.selection == Selection::All {
+            return self.delete_selection();
+        }
         let Some((start, end)) = self.ordered() else {
             return false;
         };
@@ -532,14 +541,27 @@ impl EditorState {
                 caret.map(Selection::caret).ok_or(Abort::NotApplicable)
             });
         }
-        let Some((start, end)) = self.ordered() else {
-            return false;
-        };
+        let all = self.selection == Selection::All;
+        let range = self.ordered();
         self.transact(EditKind::Other, None, "", move |tr, _| {
-            let pos = tr.delete_range(start, end)?;
+            let pos = delete_selected(tr, all, range)?;
             insert_lines(tr, pos, lines)
         })
     }
+}
+
+/// Deletes the selection: the whole document if `all` (one empty paragraph
+/// is left), else the text range. Returns where the caret goes.
+pub(crate) fn delete_selected(
+    tr: &mut Tr<'_>,
+    all: bool,
+    range: Option<(TextPos, TextPos)>,
+) -> EditResult<TextPos> {
+    if all {
+        return Ok(tr.clear_all()?);
+    }
+    let (start, end) = range.ok_or(Abort::NotApplicable)?;
+    tr.delete_range(start, end)
 }
 
 /// Inserts `lines` at `pos`: see [`EditorState::insert_inline_lines`].

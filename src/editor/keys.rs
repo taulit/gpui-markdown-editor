@@ -397,7 +397,7 @@ impl MarkdownEditor {
         }
         let (anchor, head) = match state.selection.clone() {
             Selection::Text { anchor, head } => (anchor, head),
-            Selection::Node(_) => {
+            Selection::Node(_) | Selection::All => {
                 match motion {
                     Motion::Up | Motion::PageUp | Motion::LineStart => {
                         state.move_left(Unit::Grapheme, extend)

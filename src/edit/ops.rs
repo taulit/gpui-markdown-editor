@@ -234,6 +234,43 @@ impl Tr<'_> {
             self.replace(start.block, start.offset..end.offset, Inline::default())?;
             return Ok(start);
         }
+        // A table whose cells are all selected goes as a whole: an empty
+        // paragraph takes its place at that end of the range.
+        let start_table = self.covered_table(start, true)?;
+        let end_table = self.covered_table(end, false)?;
+        if let (Some(a), Some(b)) = (start_table, end_table)
+            && a == b
+        {
+            let block = self.new_block(BlockKind::Paragraph, Inline::default());
+            let new = self.insert_before(a, block)?;
+            self.remove(a)?;
+            return Ok(TextPos {
+                block: new,
+                offset: 0,
+            });
+        }
+        let start = match start_table {
+            Some(table) => {
+                let block = self.new_block(BlockKind::Paragraph, Inline::default());
+                let new = self.insert_before(table, block)?;
+                TextPos {
+                    block: new,
+                    offset: 0,
+                }
+            }
+            None => start,
+        };
+        let end = match end_table {
+            Some(table) => {
+                let block = self.new_block(BlockKind::Paragraph, Inline::default());
+                let new = self.insert_after(table, block)?;
+                TextPos {
+                    block: new,
+                    offset: 0,
+                }
+            }
+            None => end,
+        };
         let start_loc = self.loc(start.block)?;
         let end_loc = self.loc(end.block)?;
         let between: Vec<order::Stop> = order::stops_between(self.doc(), &start_loc, &end_loc)
@@ -289,5 +326,41 @@ impl Tr<'_> {
             self.join(start.block, end.block)?;
         }
         Ok(start)
+    }
+
+    /// The table that `pos` covers from its edge: the start of its first
+    /// cell (`at_start`) or the end of its last cell.
+    fn covered_table(&self, pos: TextPos, at_start: bool) -> Result<Option<BlockId>, StepError> {
+        let Loc::Cell { table, row, col } = self.loc(pos.block)? else {
+            return Ok(None);
+        };
+        let Some(block) = order::block_at(&self.doc().blocks, &table) else {
+            return Ok(None);
+        };
+        let BlockKind::Table(data) = &block.kind else {
+            return Ok(None);
+        };
+        let covered = if at_start {
+            row == 0 && col == 0 && pos.offset == 0
+        } else {
+            let last_row = data.rows.len().saturating_sub(1);
+            let last_col = data.rows.last().map_or(0, |r| r.len().saturating_sub(1));
+            row == last_row && col == last_col && pos.offset == self.inline(pos.block)?.text.len()
+        };
+        Ok(covered.then_some(block.id))
+    }
+
+    /// Removes every block and leaves one empty paragraph. Returns its start.
+    pub(crate) fn clear_all(&mut self) -> Result<TextPos, StepError> {
+        let ids: Vec<BlockId> = self.doc().blocks.iter().map(|b| b.id).collect();
+        let block = self.new_block(BlockKind::Paragraph, Inline::default());
+        let new = self.insert_block(None, 0, block)?;
+        for id in ids {
+            self.remove(id)?;
+        }
+        Ok(TextPos {
+            block: new,
+            offset: 0,
+        })
     }
 }

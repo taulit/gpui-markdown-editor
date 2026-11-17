@@ -302,7 +302,7 @@ impl EditorState {
     pub(crate) fn move_block(&mut self, down: bool) -> bool {
         let mut ids = match &self.selection {
             Selection::Node(id) => vec![*id],
-            Selection::Text { .. } => self.selected_roots(),
+            Selection::Text { .. } | Selection::All => self.selected_roots(),
         };
         if ids.is_empty() {
             ids.extend(self.current_block());
@@ -358,6 +358,7 @@ impl EditorState {
     fn insertion_anchor(&self) -> Option<BlockId> {
         let pos = match &self.selection {
             Selection::Node(id) => return Some(*id),
+            Selection::All => return self.doc.blocks.last().map(|b| b.id),
             Selection::Text { .. } => self.ordered()?.1,
         };
         match self.locate(pos.block)? {

@@ -201,10 +201,7 @@ impl MarkdownEditor {
             // The command selects the whole document; Ctrl+A grows the
             // selection from the block to the document.
             Command::SelectAll => {
-                if let (Some(anchor), Some(head)) = (self.state.first_pos(), self.state.last_pos())
-                {
-                    self.state.set_selection(Selection::Text { anchor, head });
-                }
+                self.state.set_selection(Selection::All);
             }
             cmd => {
                 self.state.exec(&cmd, Instant::now());
@@ -330,6 +327,7 @@ impl MarkdownEditor {
     fn reveal_selection(&self) {
         let pos = match &self.state.selection {
             Selection::Text { head, .. } => *head,
+            Selection::All => return,
             Selection::Node(id) => TextPos {
                 block: *id,
                 offset: 0,

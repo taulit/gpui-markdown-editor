@@ -71,3 +71,23 @@ fn caret_marks_follow_the_text_before_the_caret() {
     let state = ed("**bold** ‸plain\n");
     assert!(!state.has_mark(&Mark::Bold));
 }
+
+#[test]
+fn pending_marks_stay_active_while_typing() {
+    let mut state = ed("see‸\n");
+    state.toggle_mark(Mark::Code);
+    type_str(&mut state, &mut Clock::new(), "foo");
+    assert_eq!(md(&state), "see`foo`\n");
+
+    let mut state = ed("a **bo‸ld** c\n");
+    state.toggle_mark(Mark::Bold);
+    type_str(&mut state, &mut Clock::new(), "xy");
+    assert_eq!(md(&state), "a **bo**xy**ld** c\n");
+
+    // Moving the caret drops them.
+    let mut state = ed("see‸\n");
+    state.toggle_mark(Mark::Bold);
+    state.move_left(Unit::Grapheme, false);
+    type_str(&mut state, &mut Clock::new(), "x");
+    assert_eq!(md(&state), "sexe\n");
+}

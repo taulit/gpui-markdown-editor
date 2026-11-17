@@ -193,6 +193,7 @@ impl EditorState {
                     Some((anchor, head))
                 }
             }
+            Selection::All => Some((self.first_pos()?, self.last_pos()?)),
             Selection::Node(_) => None,
         }
     }
@@ -240,6 +241,7 @@ impl EditorState {
                 }
                 Loc::Cell { .. } => None,
             },
+            Selection::All => (!self.doc.blocks.is_empty()).then_some(Selection::All),
         }
     }
 
@@ -270,15 +272,12 @@ impl EditorState {
 
     /// Ctrl+A: first the text of the current node, then the document.
     pub(crate) fn select_all(&mut self) -> bool {
-        let (Some(first), Some(last)) = (self.first_pos(), self.last_pos()) else {
+        if self.doc.blocks.is_empty() {
             return false;
-        };
-        let whole_doc = Selection::Text {
-            anchor: first,
-            head: last,
-        };
+        }
+        let whole_doc = Selection::All;
         let target = match self.ordered() {
-            Some((start, end)) if start.block == end.block => {
+            Some((start, end)) if start.block == end.block && self.selection != Selection::All => {
                 let node_end = self.end_of(start.block);
                 let whole_node = start.offset == 0 && end.offset == node_end.offset;
                 if whole_node {
@@ -326,6 +325,17 @@ impl EditorState {
 
     fn move_horizontal(&mut self, unit: Unit, extend: bool, forward: bool) -> bool {
         let target = match self.selection.clone() {
+            Selection::All => {
+                let stop = if forward {
+                    order::last_stop(&self.doc)
+                } else {
+                    order::first_stop(&self.doc)
+                };
+                match stop {
+                    Some(stop) => self.stop_selection(&stop, forward),
+                    None => return false,
+                }
+            }
             Selection::Node(id) => {
                 let Some(loc) = self.locate(id) else {
                     return false;
@@ -618,6 +628,7 @@ impl EditorState {
     pub(crate) fn current_block(&self) -> Option<BlockId> {
         match &self.selection {
             Selection::Node(id) => Some(*id),
+            Selection::All => None,
             Selection::Text { head, .. } => match self.locate(head.block)? {
                 Loc::Block(_) => Some(head.block),
                 Loc::Cell { table, .. } => order::block_at(&self.doc.blocks, &table).map(|b| b.id),

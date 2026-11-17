@@ -215,6 +215,35 @@ pub(crate) fn build_frame(
                 frame.over.push(Overlay::Quad(fill(r, style.caret_color)));
             }
         }
+        Some(Selection::All) => {
+            let first = crate::edit::order::first_text(doc);
+            let last = crate::edit::order::last_text(doc);
+            if let (Some(first), Some(last)) = (first, last) {
+                let end = crate::edit::order::inline_at(doc, &last.loc).map_or(0, |i| i.text.len());
+                if let (Some(a), Some(b)) =
+                    (key_of(state, doc, first.id), key_of(state, doc, last.id))
+                {
+                    paint_range(
+                        &mut frame.under,
+                        &visible,
+                        (a, 0),
+                        (b, end),
+                        style.selection_color,
+                        true,
+                    );
+                }
+            }
+            for v in &visible {
+                for (_, kind, r) in &v.layout.rects {
+                    use super::layout::RectKind;
+                    if matches!(kind, RectKind::Rule | RectKind::Image | RectKind::Table) {
+                        frame
+                            .under
+                            .push(fill(*r + v.origin, style.selection_color).corner_radii(px(4.)));
+                    }
+                }
+            }
+        }
         Some(Selection::Node(id)) => {
             for v in &visible {
                 if let Some((_, kind, r)) = v.layout.rects.iter().find(|(r, _, _)| r == id) {

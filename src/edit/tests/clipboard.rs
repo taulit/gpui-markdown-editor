@@ -82,3 +82,38 @@ fn markdown_into_a_cell_is_flattened() {
     state.insert_markdown("# x\n\ny");
     assert_eq!(md(&state), "| ax y |\n| ---- |\n");
 }
+
+#[test]
+fn select_all_covers_node_blocks_at_the_edges() {
+    let source = "---\n\ntext‸\n\n| a | b |\n|---|---|\n| c | d |\n\n![i](i.png)\n";
+    let mut state = ed(source);
+    state.select_all();
+    state.select_all();
+    assert_eq!(state.selection, Selection::All);
+    assert_eq!(
+        state.copy_text(),
+        "---\n\ntext\n\n| a   | b   |\n| --- | --- |\n| c   | d   |\n\n![i](i.png)"
+    );
+    assert!(state.delete_selection());
+    assert_eq!(md(&state), "\n");
+    assert_eq!(state.doc.blocks.len(), 1);
+    state.undo();
+    assert_eq!(state.markdown(), source.replace(CARET, ""));
+
+    // The public command selects everything at once; typing replaces it.
+    let mut state = ed(source);
+    state.exec(
+        &crate::command::Command::SelectAll,
+        std::time::Instant::now(),
+    );
+    state.select_all();
+    type_str(&mut state, &mut Clock::new(), "x");
+    assert_eq!(md(&state), "x\n");
+}
+
+#[test]
+fn deleting_a_range_that_covers_a_table_removes_it() {
+    let mut state = ed("| «a | b |\n|---|---|\n| c | d |\n\nnext‸ line\n");
+    backspace(&mut state);
+    assert_eq!(md(&state), "&#32;line\n");
+}
