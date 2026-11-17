@@ -60,6 +60,8 @@ pub(crate) struct LayoutInput<'a> {
     pub column_widths: &'a ColumnWidths,
     /// The width of an image being resized, before it is applied.
     pub image_preview: Option<(BlockId, u32)>,
+    /// Top-level blocks inside folded sections: not laid out, zero height.
+    pub hidden: &'a std::collections::HashSet<BlockId>,
 }
 
 /// Column widths in pixels per table, see [`DocMeta`](crate::DocMeta).
@@ -86,6 +88,8 @@ pub(crate) struct ViewInput<'a> {
     pub open_handle: Option<Affordance>,
     /// [`EditorOptions::resolve_src`](crate::EditorOptions::resolve_src).
     pub resolve_src: Option<&'a crate::options::SrcResolver>,
+    /// The folded headings, whose chevron stays visible.
+    pub folded: &'a std::collections::HashSet<BlockId>,
 }
 
 /// An entity a [`DocumentElement`] can render. The element routes text
@@ -128,6 +132,17 @@ impl DocumentView {
     /// transaction with the ids of the changed blocks.
     pub fn invalidate(&self, ids: impl IntoIterator<Item = BlockId>) {
         self.state.borrow_mut().invalidate(ids);
+    }
+
+    /// Gives the slots of `ids` a fresh height estimate (zero when hidden),
+    /// after they were folded or unfolded.
+    pub fn reestimate(
+        &self,
+        doc: &Document,
+        ids: &[BlockId],
+        hidden: &std::collections::HashSet<BlockId>,
+    ) {
+        self.state.borrow_mut().reestimate(doc, ids, hidden);
     }
 
     /// Drops all layouts, keeping the scroll position.

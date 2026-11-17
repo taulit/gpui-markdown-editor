@@ -112,6 +112,12 @@ pub struct MarkdownEditor {
     prompt: Option<ui::link::LinkPrompt>,
     /// The style popover of the format bar is open.
     style_menu: bool,
+    /// Folded top-level headings, and the top-level blocks they hide.
+    folded: std::collections::HashSet<BlockId>,
+    hidden: std::collections::HashSet<BlockId>,
+    /// The selection head after the last change, to tell the direction of
+    /// a caret move into a folded section.
+    last_head: Option<TextPos>,
     /// The query of the find bar when it was closed.
     last_query: String,
     _subscriptions: [Subscription; 2],
@@ -169,6 +175,9 @@ impl MarkdownEditor {
             slash: None,
             prompt: None,
             style_menu: false,
+            folded: Default::default(),
+            hidden: Default::default(),
+            last_head: None,
             last_query: String::new(),
             _subscriptions: subscriptions,
         }
@@ -192,7 +201,11 @@ impl MarkdownEditor {
         self.drag = None;
         self.table_menu = None;
         self.column_widths = widths_by_id(&self.state.doc, &self.meta);
+        self.folded.clear();
+        self.hidden.clear();
+        self.last_head = None;
         self.view.reset();
+        self.load_folds(cx);
         cx.notify();
     }
 
@@ -228,6 +241,10 @@ impl MarkdownEditor {
         match cmd {
             Command::OpenFind => {
                 self.open_find(window, cx);
+                return;
+            }
+            Command::FoldHeading => {
+                self.fold_at_caret(window, cx);
                 return;
             }
             // The command selects the whole document; Ctrl+A grows the
@@ -307,6 +324,9 @@ impl MarkdownEditor {
     pub fn set_meta(&mut self, meta: DocMeta, cx: &mut Context<Self>) {
         self.column_widths = widths_by_id(&self.state.doc, &meta);
         self.meta = meta;
+        self.load_folds(cx);
+        self.leave_hidden(false);
+        self.state.take_changes();
         cx.notify();
     }
 
@@ -372,12 +392,9 @@ impl MarkdownEditor {
             max_width: self.options.max_width,
             column_widths: &self.column_widths,
             image_preview: self.image_drag.as_ref().map(|d| (d.id, d.width)),
+            hidden: &self.hidden,
         }
     }
-
-    /// Unfolds the folded sections that hide `block`. Placeholder until
-    /// folding lands.
-    fn unfold_around(&mut self, _block: BlockId, _cx: &mut Context<Self>) {}
 
     /// Scrolls the caret (or the selected node) into view at the next frame.
     fn reveal_selection(&self) {
@@ -403,7 +420,17 @@ impl MarkdownEditor {
     /// events, caret visibility. `keep_goal` keeps the goal column of
     /// vertical movement.
     fn after_change(&mut self, keep_goal: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let changes = self.state.take_changes();
+        let mut changes = self.state.take_changes();
+        // Any edit can add or remove a heading, which shifts the ordinals:
+        // a linear pass, only while something is folded.
+        if changes.content && !self.folded.is_empty() {
+            self.sync_folds(cx);
+        }
+        if !self.hidden.is_empty() {
+            self.leave_hidden(true);
+            changes.selection |= self.state.take_changes().selection;
+        }
+        self.last_head = self.state.selection.head();
         if !keep_goal {
             self.goal_x = None;
         }

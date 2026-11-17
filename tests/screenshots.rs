@@ -512,6 +512,25 @@ fn e3_formatbar() {
     }
 }
 
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_fold() {
+    // "Packing" folded (its chevron stays), the mouse over "To do".
+    let fold = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let mut meta = gpui_markdown_editor::DocMeta::default();
+        meta.folded_headings.insert(0);
+        editor.set_meta(meta, cx);
+    };
+    let hover = vec![PlatformInput::MouseMove(MouseMoveEvent {
+        position: point(px(400.), px(205.)),
+        pressed_button: None,
+        modifiers: Modifiers::default(),
+    })];
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture_with_input(&format!("e3-fold-{name}"), mode, E2_NOTE, fold, &hover);
+    }
+}
+
 fn write_gradient(path: &Path, width: u32, height: u32, from: [u8; 3], to: [u8; 3]) {
     let img = image::RgbaImage::from_fn(width, height, |x, y| {
         let t = (x as f32 / width as f32 + y as f32 / height as f32) / 2.;

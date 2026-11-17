@@ -26,7 +26,16 @@ struct TextOp {
 
 enum Overlay {
     Quad(PaintQuad),
-    Check { bounds: Bounds<Pixels>, color: Hsla },
+    Check {
+        bounds: Bounds<Pixels>,
+        color: Hsla,
+    },
+    /// A fold chevron, pointing down when `open`.
+    Chevron {
+        bounds: Bounds<Pixels>,
+        open: bool,
+        color: Hsla,
+    },
 }
 
 /// Everything painted in one frame, in window coordinates.
@@ -175,6 +184,33 @@ pub(crate) fn build_frame(
             }
         }
     }
+    for v in &visible {
+        let Some(block) = doc.blocks().get(v.slot) else {
+            continue;
+        };
+        let (BlockKind::Heading(_), Some(node)) = (&block.kind, v.layout.nodes.first()) else {
+            continue;
+        };
+        let folded = input.folded.contains(&block.id);
+        let hovered = input
+            .hover
+            .is_some_and(|h| h.y >= v.origin.y && h.y < v.origin.y + v.layout.height);
+        if !folded && !hovered {
+            continue;
+        }
+        let b = super::geometry::chevron_rect(node.line_rect(0)) + v.origin;
+        let on = input.hover.is_some_and(|h| b.dilate(px(4.)).contains(&h));
+        frame.over.push(Overlay::Chevron {
+            bounds: b,
+            open: !folded,
+            color: if on {
+                style.text_color
+            } else {
+                style.muted_color
+            },
+        });
+    }
+
     let current = style.node_selection_color.opacity(0.55);
     let ranges = input
         .highlights
@@ -536,6 +572,26 @@ impl Frame {
                         path.move_to(o + point(px(6.5), px(10.8)) * s);
                         path.line_to(o + point(px(9.2), px(13.4)) * s);
                         path.line_to(o + point(px(14.6), px(7.8)) * s);
+                        if let Ok(path) = path.build() {
+                            window.paint_path(path, *color);
+                        }
+                    }
+                    Overlay::Chevron {
+                        bounds,
+                        open,
+                        color,
+                    } => {
+                        let o = bounds.origin;
+                        let pts = if *open {
+                            [(5., 7.), (9., 11.), (13., 7.)]
+                        } else {
+                            [(7., 5.), (11., 9.), (7., 13.)]
+                        };
+                        let mut path = PathBuilder::stroke(px(1.6));
+                        path.move_to(o + point(px(pts[0].0), px(pts[0].1)));
+                        for (x, y) in &pts[1..] {
+                            path.line_to(o + point(px(*x), px(*y)));
+                        }
                         if let Ok(path) = path.build() {
                             window.paint_path(path, *color);
                         }

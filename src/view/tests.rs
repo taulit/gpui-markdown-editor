@@ -60,9 +60,12 @@ fn layout_input<'a>(doc: &'a Document, style: &'a EditorStyle) -> LayoutInput<'a
         max_width: Some(px(700.)),
         column_widths: &NO_WIDTHS,
         image_preview: None,
+        hidden: &NO_HIDDEN,
     }
 }
 
+static NO_HIDDEN: std::sync::LazyLock<std::collections::HashSet<crate::model::BlockId>> =
+    std::sync::LazyLock::new(Default::default);
 static NO_WIDTHS: std::sync::LazyLock<super::ColumnWidths> =
     std::sync::LazyLock::new(Default::default);
 
@@ -82,6 +85,7 @@ fn input<'a>(
         hover: None,
         open_handle: None,
         resolve_src: None,
+        folded: &NO_HIDDEN,
     }
 }
 

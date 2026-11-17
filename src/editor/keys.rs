@@ -85,6 +85,7 @@ actions!(
         ToggleFindCase,
         ClosePrompt,
         ApplyPrompt,
+        FoldHeading,
     ]
 );
 
@@ -161,6 +162,7 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
         ("secondary-f", Box::new(OpenFind)),
         ("f3", Box::new(FindNext)),
         ("shift-f3", Box::new(FindPrevious)),
+        ("secondary-.", Box::new(FoldHeading)),
     ];
     if mac {
         keys.extend([
@@ -334,6 +336,7 @@ pub(super) fn bind_actions(root: Div, cx: &mut Context<MarkdownEditor>) -> Div {
         OpenFind => Op::OpenFind,
         FindNext => Op::FindStep(true),
         FindPrevious => Op::FindStep(false),
+        FoldHeading => Op::Command(Command::FoldHeading),
     )
 }
 
@@ -353,6 +356,10 @@ impl MarkdownEditor {
         let now = Instant::now();
         let mut keep_goal = false;
         match op {
+            Op::Command(Command::FoldHeading) => {
+                self.fold_at_caret(window, cx);
+                return;
+            }
             Op::Command(command) => {
                 self.state.exec(&command, now);
             }

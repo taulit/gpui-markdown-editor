@@ -312,6 +312,37 @@ impl<'a> ViewQuery<'a> {
         None
     }
 
+    /// The fold chevron of the top-level heading in slot `ix`, left of its
+    /// first line.
+    fn chevron(&mut self, ix: usize) -> Option<Bounds<Pixels>> {
+        let block = self.input.document.blocks().get(ix)?;
+        if !matches!(block.kind, crate::model::BlockKind::Heading(_))
+            || self.input.hidden.contains(&block.id)
+        {
+            return None;
+        }
+        let layout = self.layout(ix)?;
+        let r = chevron_rect(layout.nodes.first()?.line_rect(0));
+        Some(self.state.window_rect(ix, r))
+    }
+
+    /// The top-level heading whose block is at the height of `p`, with its
+    /// chevron.
+    pub fn heading_row_at(&mut self, p: Point<Pixels>) -> Option<(BlockId, Bounds<Pixels>)> {
+        let y = self.state.doc_point(p).y;
+        let ix = self.state.slot_at_y(y)?;
+        let chevron = self.chevron(ix)?;
+        let top = self.state.top_of(ix);
+        let inside = y >= top && y < top + self.state.slots[ix].height;
+        inside.then(|| (self.input.document.blocks()[ix].id, chevron))
+    }
+
+    /// The heading whose fold chevron is at `p`.
+    pub fn fold_toggle_at(&mut self, p: Point<Pixels>) -> Option<BlockId> {
+        let (id, r) = self.heading_row_at(p)?;
+        r.dilate(px(4.)).contains(&p).then_some(id)
+    }
+
     /// The caret rectangle at `pos`: the caret width wide, one line high.
     pub fn caret_bounds(&mut self, pos: TextPos) -> Option<Bounds<Pixels>> {
         let (ix, layout, n) = self.node_of(pos.block)?;
@@ -615,6 +646,15 @@ fn axis_distance(v: Pixels, lo: Pixels, hi: Pixels) -> Pixels {
 }
 
 /// The word segment around `offset` (UAX #29 word bounds).
+/// The chevron left of a heading whose first line is `line` (relative to
+/// the block).
+pub(crate) fn chevron_rect(line: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds::new(
+        point(px(-26.), line.center().y - px(9.)),
+        size(px(18.), px(18.)),
+    )
+}
+
 pub(crate) fn word_at(text: &str, offset: usize) -> Range<usize> {
     let is_word = |s: &str| s.chars().any(char::is_alphanumeric);
     let mut prev: Option<Range<usize>> = None;

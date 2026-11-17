@@ -60,6 +60,7 @@ impl ViewSource for MarkdownEditor {
             hover: self.hover,
             open_handle: self.table_menu.map(|m| m.handle),
             resolve_src: self.options.resolve_src.as_ref(),
+            folded: &self.folded,
         }
     }
 
@@ -76,6 +77,11 @@ impl ViewSource for MarkdownEditor {
         let view = self.view.clone();
         let mut q = view.query(self.layout_input(), &ts);
 
+        if let Some(heading) = q.fold_toggle_at(p) {
+            drop(q);
+            self.toggle_fold(heading, window, cx);
+            return;
+        }
         if event.modifiers.secondary(cx)
             && let Some((block, span)) = q.link_at(p)
         {
@@ -276,9 +282,19 @@ impl ViewSource for MarkdownEditor {
         let view = self.view.clone();
         let mut q = view.query(self.layout_input(), &ts);
         let caret = self.state.selection.head().map(|h| h.block);
-        // Repaint only when what the table affordances show changes.
+        // Repaint only when what the table affordances or the fold chevrons
+        // show changes.
         let mut key = |p: Option<Point<Pixels>>| {
-            p.map(|p| (q.table_focus_at(p), q.affordance_at(p, Some(p), caret)))
+            p.map(|p| {
+                let heading = q
+                    .heading_row_at(p)
+                    .map(|(id, r)| (id, r.dilate(px(4.)).contains(&p)));
+                (
+                    q.table_focus_at(p),
+                    q.affordance_at(p, Some(p), caret),
+                    heading,
+                )
+            })
         };
         let changed = key(self.hover) != key(position);
         drop(q);
