@@ -239,3 +239,54 @@ fn dragging_below_the_view_scrolls(cx: &mut TestAppContext) {
     let head = editor.read_with(cx, |e, _| e.state.selection.head().unwrap());
     assert_ne!(head.block, block(&editor, cx, 2));
 }
+
+/// The scale of the pressed checkbox after the next frame.
+fn checkbox_scale(editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext) -> Option<f32> {
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    editor.read_with(cx, |e, _| e.checkbox_scale().map(|(_, s)| s))
+}
+
+#[gpui::test]
+fn a_pressed_checkbox_springs_to_its_press_scale_and_back(cx: &mut TestAppContext) {
+    let (editor, cx) = open(cx, "- [ ] task\n");
+    let item = block(&editor, cx, 0);
+    let p = checkbox_point(&editor, cx, item);
+    let button = |position| MouseDownEvent {
+        position,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Left,
+        click_count: 1,
+        first_mouse: false,
+    };
+    cx.simulate_event(button(p));
+    assert_eq!(checkbox_scale(&editor, cx), Some(1.));
+    cx.executor().advance_clock(Duration::from_millis(40));
+    let s = checkbox_scale(&editor, cx).unwrap();
+    assert!(s < 1. && s > super::super::press::PRESSED - 0.05, "{s}");
+    cx.executor().advance_clock(Duration::from_millis(500));
+    assert_eq!(
+        checkbox_scale(&editor, cx),
+        Some(super::super::press::PRESSED)
+    );
+
+    // A long hold without frames must not make the release skip the spring.
+    cx.executor().advance_clock(Duration::from_secs(2));
+    cx.simulate_event(MouseUpEvent {
+        position: p,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Left,
+        click_count: 1,
+    });
+    cx.executor().advance_clock(Duration::from_millis(40));
+    assert!(
+        checkbox_scale(&editor, cx).is_some_and(|s| s > super::super::press::PRESSED && s < 1.)
+    );
+    cx.executor().advance_clock(Duration::from_millis(1000));
+    assert_eq!(checkbox_scale(&editor, cx), None);
+    assert!(md(&editor, cx).contains("[x]"));
+
+    // With reduced motion the checkbox is not scaled at all.
+    cx.update(|_, cx| cx.set_reduce_motion(true));
+    cx.simulate_event(button(p));
+    assert_eq!(checkbox_scale(&editor, cx), None);
+}

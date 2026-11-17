@@ -72,6 +72,7 @@ impl ViewSource for MarkdownEditor {
                 && self.image_drag.is_none()
                 && self.column_drag.is_none(),
             block_drag: self.block_drag.map(|d| (d.from, d.gap)),
+            checkbox_scale: self.checkbox_scale(),
         }
     }
 
@@ -160,6 +161,7 @@ impl ViewSource for MarkdownEditor {
         }
         if let Some(item) = q.checkbox_at(p) {
             drop(q);
+            self.press_checkbox(item, cx);
             self.state.toggle_task_item(item);
             self.after_change(false, window, cx);
             return;
@@ -288,6 +290,7 @@ impl ViewSource for MarkdownEditor {
     }
 
     fn mouse_up(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.release_checkbox(cx);
         if self.block_drag.is_some() {
             self.finish_block_drag(window, cx);
             return;

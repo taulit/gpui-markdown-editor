@@ -235,6 +235,40 @@ fn e2_typing() {
     }
 }
 
+/// Frames for the README animation: typing with input rules, one frame
+/// every few keys, written to `target/readme-typing/` (combined into
+/// `docs/screenshots/typing.gif` by `scripts/readme-gif.sh`).
+#[test]
+#[ignore = "needs a GPU and writes target/readme-typing, run scripts/readme-gif.sh"]
+fn readme_typing_frames() {
+    let typed = "Groceries\n## Market\n[] Apples\nBread\n\nOnly **organic** milk.";
+    let keys: Vec<String> = typed
+        .chars()
+        .map(|ch| match ch {
+            '\n' => "enter".to_string(),
+            ' ' => "space".to_string(),
+            ch => ch.to_string(),
+        })
+        .collect();
+    // The last frame repeats so the loop pauses on the result.
+    let ends = (0..=keys.len())
+        .step_by(2)
+        .chain(std::iter::repeat_n(keys.len(), 8));
+    for (frame, end) in ends.enumerate() {
+        // Relative to docs/screenshots, where `capture_with_keys` writes.
+        let name = format!("../../target/readme-typing/frame-{frame:03}");
+        capture_with_keys(
+            &name,
+            ThemeMode::Light,
+            "",
+            |_, _| {},
+            &[],
+            &keys[..end],
+            None,
+        );
+    }
+}
+
 const E3_TABLE: &str = "\
 Trip budget
 
@@ -649,6 +683,8 @@ fn capture_with_keys(
         gpui_component::init(cx);
         gpui_markdown_editor::init(cx);
         apply_sheaf_theme(mode, cx);
+        // Popups and checkboxes animate; a screenshot shows their end state.
+        cx.set_reduce_motion(true);
     });
 
     let window = cx

@@ -4,6 +4,7 @@ mod drag;
 mod input;
 mod keys;
 mod mouse;
+mod press;
 mod table;
 #[cfg(test)]
 mod tests;
@@ -125,6 +126,7 @@ pub struct MarkdownEditor {
     /// a caret move into a folded section.
     last_head: Option<TextPos>,
     block_drag: Option<drag::BlockDrag>,
+    checkbox_press: Option<press::CheckboxPress>,
     /// The query of the find bar when it was closed.
     last_query: String,
     _subscriptions: [Subscription; 2],
@@ -180,6 +182,7 @@ impl MarkdownEditor {
             blink: None,
             drag: None,
             hover: None,
+            checkbox_press: None,
             table_menu: None,
             column_drag: None,
             image_drag: None,
@@ -532,6 +535,7 @@ impl Render for MarkdownEditor {
                 self.blink = None;
             }
         }
+        self.step_checkbox_press(window, cx);
         let document = div()
             .id("markdown-editor")
             .role(gpui::Role::Group)
@@ -619,6 +623,9 @@ fn tables(doc: &Document) -> Vec<BlockId> {
 
 /// The column widths of `meta` keyed by the ids of the tables of `doc`.
 fn widths_by_id(doc: &Document, meta: &DocMeta) -> ColumnWidths {
+    if meta.column_widths.is_empty() {
+        return ColumnWidths::default();
+    }
     tables(doc)
         .into_iter()
         .enumerate()

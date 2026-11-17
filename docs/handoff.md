@@ -15,16 +15,16 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-Nothing. E3 is complete on `phase/e3-blocks-ui` (tag `v0.0.4`), PR open against `main`, waiting for the user.
+Nothing. E0–E3 are merged to `main` (PRs 1, 3, 4, 5; tag `v0.0.4`). E4 is complete on `phase/e4-release`
+(rebased on `main`, final bug review done and its two findings fixed), PR open against `main`, waiting for the user.
 
 ## Next
 
-1. After the E3 PR is merged: branch `phase/e4-release` from `main`.
-2. E4: criterion benchmarks and `docs/performance.md` (keystroke + frame in a 10,000-line document measured
-   at 0.62 ms median, budget 4 ms), README with GIF, shortcut table and comparison (plan §13), popup motion
-   (250 ms ease-out) and checkbox press spring (plan 04), docs pass, final bug/spec/simplicity reviews,
-   `docs/release-checklist.md`, tag `v0.1.0`. No crates.io publishing (the user does that).
-3. Apply the user's answers to the pending decisions listed in `docs/STATUS.md`.
+1. Apply the user's answers to the four pending decisions in `docs/STATUS.md`.
+2. Then bump to 0.1.0, changelog, tag `v0.1.0` (see `docs/release-checklist.md`). No crates.io publishing
+   (the user does that).
+3. Known performance edge: opening 1 MB takes about 31 ms on a quiet machine (budget 50 ms) but 57–66 ms under
+   heavy load; parsing is about 35 ms of it.
 
 ## Open, known and accepted for now
 

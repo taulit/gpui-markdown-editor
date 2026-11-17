@@ -14,15 +14,24 @@ pub(super) mod format_bar;
 pub(super) mod link;
 pub(super) mod slash;
 
+use std::time::Duration;
+
 use gpui::{
-    App, Bounds, BoxShadow, Div, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Point, SharedString, Size, Stateful, StatefulInteractiveElement as _, Styled as _, div,
-    hsla, point, prelude::FluentBuilder as _, px,
+    Animation, AnimationElement, AnimationExt as _, App, Bounds, BoxShadow, Div, ElementId, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, SharedString, Size,
+    Stateful, StatefulInteractiveElement as _, Styled as _, div, ease_out_quint, hsla, point,
+    prelude::FluentBuilder as _, px,
 };
 use gpui_component::ActiveTheme as _;
 
 /// Space kept between a popup and the edge of the editor.
 pub(super) const MARGIN: Pixels = px(8.);
+
+/// How long a popup takes to appear (plan 04: popover, 250 ms ease-out).
+pub(super) const APPEAR: Duration = Duration::from_millis(250);
+
+/// How far a popup slides while it appears.
+pub(super) const APPEAR_OFFSET: Pixels = px(6.);
 
 /// The colors of the popups, taken from the gpui-component theme.
 #[derive(Clone, Copy, Debug)]
@@ -183,6 +192,27 @@ pub(super) fn place(
     point(
         x.clamp(area.left() + MARGIN, max_x) - area.left(),
         y.clamp(area.top() + MARGIN, max_y) - area.top(),
+    )
+}
+
+/// Fades `element` in and slides it into place from `APPEAR_OFFSET` above
+/// (or below, with `from_below`) when it is first drawn. The animation runs
+/// again only after the element was absent for a frame; with
+/// [`App::reduce_motion`] GPUI draws the end state at once.
+pub(super) fn appear<E: gpui::Styled + IntoElement + 'static>(
+    element: E,
+    id: &'static str,
+    from_below: bool,
+) -> AnimationElement<E> {
+    let offset = if from_below {
+        APPEAR_OFFSET
+    } else {
+        -APPEAR_OFFSET
+    };
+    element.with_animation(
+        ElementId::Name(format!("{id}-appear").into()),
+        Animation::new(APPEAR).with_easing(ease_out_quint()),
+        move |element, t| element.relative().top(offset * (1. - t)).opacity(t),
     )
 }
 

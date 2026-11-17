@@ -3,6 +3,28 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
+## [Unreleased]
+
+Benchmarks, motion and documentation (phase E4, part 1).
+
+- Popups (slash menu, completions, link popover and bubble, style
+  popover, find bar, table menu) fade in and slide 6 px into place over
+  250 ms ease-out. A checkbox pressed with the mouse springs to 85 % of
+  its size and back (stiffness 300, damping 26). Both follow GPUI's
+  `App::set_reduce_motion` and request no frames once settled.
+- Criterion benchmarks (`cargo bench`): parse and serialize of 10 KB and
+  1 MB, `html_to_markdown` on 100 KB, a keystroke in the editing core and
+  with a frame in a 10,000-block document, opening and the first layout
+  of 1 MB, find over 1 MB. Results and budgets in `docs/performance.md`.
+  CI compiles the benchmarks.
+- Crate documentation rewritten as a guide (loading and events, options,
+  commands, a complete extension, `DocMeta` persistence, images and
+  attachments, keys and rebinding, round-trip rules, motion, known
+  limits); README with screenshots, shortcuts and a comparison with
+  gpui-component; `docs/release-checklist.md`; `examples/headless.rs`.
+- API: no changes. `gpui_markdown_editor::bench` is `#[doc(hidden)]`, for
+  the benchmarks only and not covered by semver.
+
 ## [0.0.4]
 
 Tables, images and the editor UI (phase E3).

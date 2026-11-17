@@ -22,7 +22,7 @@ use gpui::{
 };
 
 use super::super::MarkdownEditor;
-use super::{Palette, panel, tool_button};
+use super::{Palette, appear, panel, tool_button};
 use crate::command::Command;
 use crate::edit::Selection;
 use crate::model::{BlockKind, Mark};
@@ -333,7 +333,7 @@ impl MarkdownEditor {
                 this.command(Command::ToggleMark(mark.clone()), window, cx)
             }))
         });
-        panel(palette)
+        let menu = panel(palette)
             .id("style-menu")
             .role(gpui::Role::Menu)
             .aria_label("Styles")
@@ -353,8 +353,8 @@ impl MarkdownEditor {
                     .border_t_1()
                     .border_color(palette.hair)
                     .children(marks),
-            )
-            .into_any_element()
+            );
+        appear(menu, "style-menu", true).into_any_element()
     }
 }
 
