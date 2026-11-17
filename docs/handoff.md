@@ -15,11 +15,12 @@ Written 2026-11-17 so that work can resume without the session's context. Plan: 
 
 ## Running
 
-- E2 PR: https://github.com/taulit/gpui-markdown-editor/pull/4 (tag `v0.0.3`), waiting for the user to merge.
-- E3 on `phase/e3-blocks-ui` (stacked on `phase/e2-editing`). Part 1, a sub-agent: table editing and images
-  (commits `feat(table): …`, `feat(image): …`). Part 2, not started: slash menu, format bar, link popover,
-  find bar, folding, HTML/image paste, drag, extension hooks, accessibility roles. Run the parts one after the
-  other; they touch the same files.
+- E2 is merged (PR #4, tag `v0.0.3`).
+- E3 on `phase/e3-blocks-ui` (rebased on `main`, pushed). Part 1 (table editing, column widths in `DocMeta`,
+  image loading and resize) is done and committed; gate checks green. Part 2, a sub-agent: slash menu, format
+  bar, link popover, find bar, folding, HTML/image paste, block drag, extension hooks, accessibility roles
+  (commits `feat(ui): …` etc.). After it: gate checks, bug-review, simplicity-review, spec-review, version
+  bump and tag `v0.0.4`, PR against `main`.
 
 ## Next
 
