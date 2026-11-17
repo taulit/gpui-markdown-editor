@@ -59,7 +59,3 @@ harness = false
 [[bench]]
 name = "editor"
 harness = false
-
-[[bench]]
-name = "gen_tmp"
-harness = false

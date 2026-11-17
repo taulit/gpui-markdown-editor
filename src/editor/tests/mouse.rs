@@ -264,7 +264,10 @@ fn a_pressed_checkbox_springs_to_its_press_scale_and_back(cx: &mut TestAppContex
     let s = checkbox_scale(&editor, cx).unwrap();
     assert!(s < 1. && s > super::super::press::PRESSED - 0.05, "{s}");
     cx.executor().advance_clock(Duration::from_millis(500));
-    assert_eq!(checkbox_scale(&editor, cx), Some(super::super::press::PRESSED));
+    assert_eq!(
+        checkbox_scale(&editor, cx),
+        Some(super::super::press::PRESSED)
+    );
 
     cx.simulate_event(MouseUpEvent {
         position: p,

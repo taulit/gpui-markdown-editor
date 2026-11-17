@@ -54,7 +54,12 @@ fn main() {
     walk(doc.blocks(), &mut |block| {
         let content = block.content();
         for span in content.marks() {
-            if span.mark == (Mark::Custom { id: Tag::MARK, attr: None }) {
+            if span.mark
+                == (Mark::Custom {
+                    id: Tag::MARK,
+                    attr: None,
+                })
+            {
                 tags.push(content.text()[span.range.clone()].to_string());
             }
         }

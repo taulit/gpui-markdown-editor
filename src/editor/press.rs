@@ -2,9 +2,9 @@
 
 use std::time::Instant;
 
-use gpui::{App, Context, SpringConfig, SpringState, Window};
 use super::MarkdownEditor;
 use crate::model::BlockId;
+use gpui::{App, Context, SpringConfig, SpringState, Window};
 
 /// The scale of a pressed checkbox.
 pub(super) const PRESSED: f32 = 0.85;

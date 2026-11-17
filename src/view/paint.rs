@@ -162,10 +162,8 @@ pub(crate) fn build_frame(
                     if let Some((_, scale)) = input.checkbox_scale.filter(|(p, _)| p == id) {
                         let center = b.center();
                         b.size = size(b.size.width * scale, b.size.height * scale);
-                        b.origin = point(
-                            center.x - b.size.width / 2.,
-                            center.y - b.size.height / 2.,
-                        );
+                        b.origin =
+                            point(center.x - b.size.width / 2., center.y - b.size.height / 2.);
                     }
                     let r = b.size.width / 2.;
                     if *checked {

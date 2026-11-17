@@ -17,9 +17,10 @@ pub(super) mod slash;
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationElement, AnimationExt as _, App, Bounds, BoxShadow, Div, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Point, SharedString, Size, Stateful, StatefulInteractiveElement as _, Styled as _, div,
-    ease_out_quint, hsla, point, prelude::FluentBuilder as _, px,
+    Animation, AnimationElement, AnimationExt as _, App, Bounds, BoxShadow, Div, ElementId, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, SharedString, Size,
+    Stateful, StatefulInteractiveElement as _, Styled as _, div, ease_out_quint, hsla, point,
+    prelude::FluentBuilder as _, px,
 };
 use gpui_component::ActiveTheme as _;
 

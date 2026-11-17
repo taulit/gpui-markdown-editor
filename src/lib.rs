@@ -411,4 +411,3 @@ pub use options::{
     SlashItem, SrcResolver, UiParts,
 };
 pub use style::EditorStyle;
-#[cfg(test)] mod prof_tmp;

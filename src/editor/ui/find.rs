@@ -317,6 +317,9 @@ impl MarkdownEditor {
                         cx.listener(|this, _, window, cx| this.close_find(false, window, cx)),
                     ),
             );
-        Some(overlay(gpui::point(x, px(10.)), appear(bar, "find-bar", false)))
+        Some(overlay(
+            gpui::point(x, px(10.)),
+            appear(bar, "find-bar", false),
+        ))
     }
 }
