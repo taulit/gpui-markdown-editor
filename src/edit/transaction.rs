@@ -168,21 +168,28 @@ impl<'a> Tr<'a> {
                     })
                     .collect()
             };
-            let mut previous: Option<u32> = None;
-            for (id, number) in children {
-                match (previous, number) {
-                    (Some(prev), Some(number)) => {
-                        let expected = prev.saturating_add(1);
-                        if number != expected {
-                            self.step(Step::SetAttr {
-                                block: id,
-                                attr: Attr::Number(expected),
-                            })?;
-                        }
-                        previous = Some(expected);
+            // A run starts at its smallest number: moving or inserting items
+            // keeps the start of the list where it was.
+            let mut index = 0;
+            while index < children.len() {
+                if children[index].1.is_none() {
+                    index += 1;
+                    continue;
+                }
+                let start = index;
+                while index < children.len() && children[index].1.is_some() {
+                    index += 1;
+                }
+                let run = &children[start..index];
+                let first = run.iter().filter_map(|(_, n)| *n).min().unwrap_or(1);
+                for (offset, (id, number)) in run.iter().enumerate() {
+                    let expected = first.saturating_add(offset as u32);
+                    if *number != Some(expected) {
+                        self.step(Step::SetAttr {
+                            block: *id,
+                            attr: Attr::Number(expected),
+                        })?;
                     }
-                    (None, Some(number)) => previous = Some(number),
-                    (_, None) => previous = None,
                 }
             }
         }
