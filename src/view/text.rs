@@ -27,6 +27,8 @@ pub(crate) struct TextSpec {
     pub strike: bool,
     /// Ignores marks (code blocks, raw source).
     pub plain: bool,
+    /// Tabular figures (OpenType `tnum`), for table text.
+    pub tabular: bool,
 }
 
 impl TextSpec {
@@ -39,6 +41,7 @@ impl TextSpec {
         hash_color(self.color, h);
         self.strike.hash(h);
         self.plain.hash(h);
+        self.tabular.hash(h);
     }
 
     fn font(&self) -> Font {
@@ -46,6 +49,9 @@ impl TextSpec {
         f.weight = self.weight;
         if self.italic {
             f.style = FontStyle::Italic;
+        }
+        if self.tabular {
+            f.features = gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)]));
         }
         f
     }
@@ -503,4 +509,33 @@ pub(crate) fn prev_boundary(text: &str, offset: usize) -> usize {
         .char_indices()
         .next_back()
         .map_or(0, |(ix, _)| ix)
+}
+
+#[cfg(test)]
+mod spec_tests {
+    use super::*;
+
+    #[test]
+    fn tabular_specs_enable_tnum() {
+        let spec = TextSpec {
+            family: "Inter".into(),
+            size: gpui::px(14.),
+            line_height: gpui::px(20.),
+            weight: gpui::FontWeight::NORMAL,
+            italic: false,
+            color: gpui::black(),
+            strike: false,
+            plain: false,
+            tabular: true,
+        };
+        assert_eq!(
+            spec.font().features.tag_value_list(),
+            [("tnum".to_string(), 1)]
+        );
+        let plain = TextSpec {
+            tabular: false,
+            ..spec
+        };
+        assert!(plain.font().features.tag_value_list().is_empty());
+    }
 }

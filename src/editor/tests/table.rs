@@ -588,3 +588,26 @@ fn table_structure_from_the_keyboard(cx: &mut TestAppContext) {
     assert_eq!(md(&editor, cx), before);
     assert!(editor.read_with(cx, |e, _| e.table_menu.is_none()));
 }
+
+#[gpui::test]
+fn numeric_columns_align_right(cx: &mut TestAppContext) {
+    let (editor, cx) = open(
+        cx,
+        "| Item | Price | Note | Left |\n|---|---|---|:--|\n| Milk | 1,20 € | 2 | 3 |\n| Bread | -12.5 % | x | 4 |\n",
+    );
+    // Where the text of a cell starts, relative to the cell.
+    let indent = |editor: &Entity<MarkdownEditor>, cx: &mut VisualTestContext, row, col| {
+        let id = cell(editor, cx, 0, row, col);
+        let start = point_of(editor, cx, pos(id, 0)).x;
+        (start - bounds_of(editor, cx, id).left()).as_f32()
+    };
+    let pad = 12. + 1.;
+    // "Price" is all numbers: the shorter value starts further right, and
+    // the header follows the column.
+    assert!(indent(&editor, cx, 1, 1) > pad + 4.);
+    assert!(indent(&editor, cx, 0, 1) > pad + 4.);
+    // Text and explicitly left-aligned columns stay left.
+    assert!(indent(&editor, cx, 1, 0) <= pad);
+    assert!(indent(&editor, cx, 1, 2) <= pad, "\"x\" is not a number");
+    assert!(indent(&editor, cx, 1, 3) <= pad, "explicit alignment wins");
+}

@@ -265,6 +265,7 @@ impl LayoutEnv<'_> {
             color: s.text_color,
             strike: false,
             plain: false,
+            tabular: false,
         }
     }
 
@@ -659,6 +660,40 @@ fn links_of(inline: &Inline) -> Vec<MarkSpan> {
         .collect()
 }
 
+/// `true` if every non-empty cell is a number (digits with separators,
+/// sign, currency or percent) and there is at least one.
+fn numeric_column<'a>(cells: impl Iterator<Item = &'a crate::model::Cell>) -> bool {
+    let mut any = false;
+    for cell in cells {
+        let text = cell.content().text().trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !is_number(text) {
+            return false;
+        }
+        any = true;
+    }
+    any
+}
+
+/// A number as written in a table: `1,234.50`, `-3`, `+4 %`, `€ 12`,
+/// `1 000`, `12'000`, `$5`, `3.5‰`.
+pub(crate) fn is_number(text: &str) -> bool {
+    let mut digits = false;
+    for ch in text.chars() {
+        match ch {
+            '0'..='9' => digits = true,
+            '.' | ',' | '\'' | '’' | ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}' => {}
+            '+' | '-' | '−' | '±' | '%' | '‰' => {}
+            '$' | '€' | '£' | '¥' | '₹' | '₽' | '₩' | '¢' | '₺' | '₴' | '₪' | '₫' | '฿' | '₿' =>
+                {}
+            _ => return false,
+        }
+    }
+    digits
+}
+
 /// The narrowest a table column gets.
 pub(crate) const MIN_COLUMN: Pixels = px(48.);
 /// The widest a column gets from its content alone (unless the content
@@ -688,6 +723,7 @@ fn place_table(
     let body = TextSpec {
         size: s.table_text_size,
         line_height: s.table_text_size * s.table_line_height,
+        tabular: true,
         ..env.body()
     };
     let header = TextSpec {
@@ -723,6 +759,14 @@ fn place_table(
         }
     }
     let width: Pixels = widths.iter().copied().sum();
+    // A column without an alignment whose body cells are all numbers is
+    // right-aligned.
+    let numeric: Vec<bool> = (0..cols)
+        .map(|c| {
+            table.align.get(c).copied().unwrap_or_default() == Align::None
+                && numeric_column(table.rows.iter().skip(1).filter_map(|r| r.get(c)))
+        })
+        .collect();
 
     let mut row_y = y;
     let mut row_tops = Vec::with_capacity(table.rows.len() + 1);
@@ -740,6 +784,7 @@ fn place_table(
             let align = match table.align.get(c).copied().unwrap_or_default() {
                 Align::Center => TextAlign::Center,
                 Align::Right => TextAlign::Right,
+                Align::None if numeric[c] => TextAlign::Right,
                 Align::None | Align::Left => TextAlign::Left,
             };
             let offsets = text.line_offsets(align, inner);
@@ -914,4 +959,21 @@ pub(crate) fn estimate_height(block: &Block, style: &EditorStyle, width: Pixels)
         .map(|c| estimate_height(c, style, width))
         .sum();
     own + kids
+}
+
+#[cfg(test)]
+mod number_tests {
+    use super::is_number;
+
+    #[test]
+    fn numbers_as_written_in_tables() {
+        for yes in [
+            "1", "1,234.50", "-3", "+4 %", "€ 12", "1 000", "12'000", "$5", "3.5‰", "−7", "1.234,5",
+        ] {
+            assert!(is_number(yes), "{yes:?}");
+        }
+        for no in ["", "-", "%", "x1", "1a", "v1.2", "12 kg", "€"] {
+            assert!(!is_number(no), "{no:?}");
+        }
+    }
 }

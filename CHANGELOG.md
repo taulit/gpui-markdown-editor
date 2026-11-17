@@ -40,6 +40,9 @@ After review (part 3):
   (format bar, menu, keys) and their undo and redo, also undoing the
   deletion of a whole table.
 - Fixed a panic when an extension's input rule rewrote a typed `/` or `#`.
+- Tables: a column without an alignment whose body cells are all numbers
+  (digits with separators, sign, currency or percent) is right-aligned;
+  table text uses tabular figures (`tnum`).
 - `highlight` scrolls the first range into view (unfolding a folded
   section that hides it) without moving the caret.
 - The popup shadow has alpha 0.5 as in the design.
