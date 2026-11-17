@@ -1,8 +1,6 @@
 //! Dropping image files and dragging blocks by their handle.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use gpui::{
     Entity, ExternalPaths, FileDropEvent, Modifiers, MouseButton, Pixels, Point, TestAppContext,
@@ -123,11 +121,11 @@ fn dropped_image_files_go_through_on_image(cx: &mut TestAppContext) {
     let other = dir.join("notes.txt");
     std::fs::write(&other, b"text").unwrap();
 
-    let received = Rc::new(RefCell::new(Vec::new()));
+    let received = Arc::new(Mutex::new(Vec::new()));
     let sink = received.clone();
     let options = EditorOptions {
         on_image: Some(Arc::new(move |bytes: Vec<u8>, mime: &str| {
-            sink.borrow_mut().push((bytes.len(), mime.to_string()));
+            sink.lock().unwrap().push((bytes.len(), mime.to_string()));
             Some("assets/shot.png".to_string())
         })),
         ..options()
@@ -148,7 +146,7 @@ fn dropped_image_files_go_through_on_image(cx: &mut TestAppContext) {
     });
     cx.simulate_event(FileDropEvent::Submit { position: at });
     cx.run_until_parked();
-    assert_eq!(*received.borrow(), [(9, "image/png".to_string())]);
+    assert_eq!(*received.lock().unwrap(), [(9, "image/png".to_string())]);
     assert_eq!(md(&editor, cx), "Text\n\n![](assets/shot.png)\n");
     std::fs::remove_dir_all(&dir).ok();
 }
