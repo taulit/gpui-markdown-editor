@@ -108,6 +108,10 @@ fn inline_rule(typed_text: &str, expected: &str, literal: &str) {
     assert!(backspace(&mut state));
     assert_eq!(state.doc.blocks[0].content.text, format!("x{literal}"));
     assert!(state.doc.blocks[0].content.marks.is_empty());
+    let mut state = typed("x‸\n", typed_text);
+    assert!(state.undo());
+    assert_eq!(state.doc.blocks[0].content.text, format!("x{literal}"));
+    assert_eq!(caret(&state), format!("x{literal}‸"));
 }
 
 #[test]

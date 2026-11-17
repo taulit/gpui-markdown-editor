@@ -96,6 +96,13 @@ impl EditorState {
         };
     }
 
+    /// Parses `markdown` with the document's extensions and starts over:
+    /// new document, caret at the start, empty history.
+    pub(crate) fn set_markdown(&mut self, markdown: &str) {
+        let extensions = self.doc.extensions.clone();
+        self.set_document(Document::parse_with(markdown, extensions));
+    }
+
     fn reset_selection(&mut self) {
         if self.doc.blocks.is_empty() {
             let id = self.doc.alloc_id();
