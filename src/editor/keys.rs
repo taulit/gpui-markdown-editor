@@ -15,6 +15,9 @@ use crate::model::{BlockKind, Mark, TextPos};
 /// The key context of the editor, for host key bindings.
 pub(crate) const CONTEXT: &str = "MarkdownEditor";
 
+/// The key context of the find bar.
+pub(crate) const FIND_CONTEXT: &str = "MarkdownEditorFind";
+
 actions!(
     markdown_editor,
     [
@@ -72,6 +75,11 @@ actions!(
         CutSelection,
         PasteClipboard,
         Cancel,
+        OpenFind,
+        FindNext,
+        FindPrevious,
+        CloseFind,
+        ToggleFindCase,
     ]
 );
 
@@ -145,6 +153,9 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
         ("secondary-x", Box::new(CutSelection)),
         ("secondary-v", Box::new(PasteClipboard)),
         ("escape", Box::new(Cancel)),
+        ("secondary-f", Box::new(OpenFind)),
+        ("f3", Box::new(FindNext)),
+        ("shift-f3", Box::new(FindPrevious)),
     ];
     if mac {
         keys.extend([
@@ -177,15 +188,27 @@ fn bindings(cx: &App) -> Vec<KeyBinding> {
             ("ctrl-shift-end", Box::new(SelectDocEnd)),
         ]);
     }
-    let context = KeyBindingContextPredicate::parse(CONTEXT)
-        .ok()
-        .map(std::rc::Rc::new);
-    keys.into_iter()
-        .map(|(keystrokes, action)| {
-            KeyBinding::load(keystrokes, action, context.clone(), false, None, cx)
-                .expect("valid key binding")
-        })
-        .collect()
+    let find: Vec<(&str, Box<dyn gpui::Action>)> = vec![
+        ("escape", Box::new(CloseFind)),
+        ("secondary-f", Box::new(OpenFind)),
+        ("f3", Box::new(FindNext)),
+        ("shift-f3", Box::new(FindPrevious)),
+        ("alt-c", Box::new(ToggleFindCase)),
+    ];
+    let load = |context: &str, keys: Vec<(&str, Box<dyn gpui::Action>)>| {
+        let context = KeyBindingContextPredicate::parse(context)
+            .ok()
+            .map(std::rc::Rc::new);
+        keys.into_iter()
+            .map(move |(keystrokes, action)| {
+                KeyBinding::load(keystrokes, action, context.clone(), false, None, cx)
+                    .expect("valid key binding")
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut all = load(CONTEXT, keys);
+    all.extend(load(FIND_CONTEXT, find));
+    all
 }
 
 /// What a key does.
@@ -203,8 +226,11 @@ pub(super) enum Op {
     Cut,
     Paste,
     Link,
-    /// Escape: closes the open table menu.
+    /// Escape: closes the open menu or bar.
     Cancel,
+    OpenFind,
+    /// F3, Shift+F3: the next or previous match of the open find bar.
+    FindStep(bool),
 }
 
 /// A caret movement.
@@ -289,6 +315,9 @@ pub(super) fn bind_actions(root: Div, cx: &mut Context<MarkdownEditor>) -> Div {
         CutSelection => Op::Cut,
         PasteClipboard => Op::Paste,
         Cancel => Op::Cancel,
+        OpenFind => Op::OpenFind,
+        FindNext => Op::FindStep(true),
+        FindPrevious => Op::FindStep(false),
     )
 }
 
@@ -339,10 +368,26 @@ impl MarkdownEditor {
             Op::Link => self.toggle_link(cx),
             Op::Cancel => {
                 // Without a menu Escape belongs to the host.
-                if self.table_menu.take().is_none() {
+                if self.table_menu.take().is_none() && self.find.take().is_none() {
                     cx.propagate();
                     return;
                 }
+            }
+            Op::OpenFind => {
+                if self.options.ui.find_bar {
+                    self.open_find(window, cx);
+                } else {
+                    cx.propagate();
+                }
+                return;
+            }
+            Op::FindStep(forward) => {
+                if self.find.is_some() {
+                    self.find_step(forward, cx);
+                } else {
+                    cx.propagate();
+                }
+                return;
             }
         }
         self.after_change(keep_goal, window, cx);

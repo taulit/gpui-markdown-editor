@@ -175,32 +175,38 @@ pub(crate) fn build_frame(
             }
         }
     }
-    for range in input.highlights {
-        let (Some(a), Some(b)) = (keys.get(&range.start.block), keys.get(&range.end.block)) else {
-            if range.start.block == range.end.block {
-                continue;
-            }
-            let ends = [range.start, range.end].map(|p| key_of(state, doc, p.block));
-            if let [Some(a), Some(b)] = ends {
-                paint_range(
-                    &mut frame.under,
-                    &visible,
-                    (a, range.start.offset),
-                    (b, range.end.offset),
-                    style.highlight_color,
-                    false,
-                );
-            }
-            continue;
+    let current = style.node_selection_color.opacity(0.55);
+    let ranges = input
+        .highlights
+        .iter()
+        .map(|r| (r, style.highlight_color))
+        .chain(input.search.iter().map(|r| {
+            let color = if Some(*r) == input.search_current {
+                current
+            } else {
+                style.highlight_color
+            };
+            (r, color)
+        }));
+    for (range, color) in ranges {
+        let ends = match (keys.get(&range.start.block), keys.get(&range.end.block)) {
+            (Some(a), Some(b)) => Some((*a, *b)),
+            _ if range.start.block == range.end.block => None,
+            _ => match [range.start, range.end].map(|p| key_of(state, doc, p.block)) {
+                [Some(a), Some(b)] => Some((a, b)),
+                _ => None,
+            },
         };
-        paint_range(
-            &mut frame.under,
-            &visible,
-            (*a, range.start.offset),
-            (*b, range.end.offset),
-            style.highlight_color,
-            false,
-        );
+        if let Some((a, b)) = ends {
+            paint_range(
+                &mut frame.under,
+                &visible,
+                (a, range.start.offset),
+                (b, range.end.offset),
+                color,
+                false,
+            );
+        }
     }
 
     match input.selection {

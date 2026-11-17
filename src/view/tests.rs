@@ -75,6 +75,8 @@ fn input<'a>(
         layout: layout_input(doc, style),
         selection,
         highlights: &[],
+        search: &[],
+        search_current: None,
         caret_visible: true,
         marked: None,
         hover: None,

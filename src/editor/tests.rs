@@ -6,6 +6,7 @@
 
 mod clipboard;
 mod editing;
+mod find;
 mod image;
 mod ime;
 mod mouse;

@@ -70,8 +70,11 @@ pub(crate) type ColumnWidths = std::collections::HashMap<BlockId, Vec<f32>>;
 pub(crate) struct ViewInput<'a> {
     pub layout: LayoutInput<'a>,
     pub selection: Option<&'a Selection>,
-    /// Extra backgrounds, for example search hits.
+    /// Extra backgrounds set by the host.
     pub highlights: &'a [TextRange],
+    /// The matches of the find bar, and the current one, painted stronger.
+    pub search: &'a [TextRange],
+    pub search_current: Option<TextRange>,
     /// Whether the caret is drawn in this frame (blinking is up to the caller).
     pub caret_visible: bool,
     /// Text being composed by an input method, drawn underlined.

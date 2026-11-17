@@ -53,6 +53,8 @@ impl ViewSource for MarkdownEditor {
             layout: self.layout_input(),
             selection: Some(&self.state.selection),
             highlights: &self.highlights,
+            search: self.find.as_ref().map_or(&[], |f| &f.matches),
+            search_current: self.find.as_ref().and_then(|f| f.current_range()),
             caret_visible: self.focused && self.caret_on,
             marked: self.state.valid_marked(),
             hover: self.hover,

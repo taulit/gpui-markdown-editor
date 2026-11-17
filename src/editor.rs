@@ -6,6 +6,7 @@ mod mouse;
 mod table;
 #[cfg(test)]
 mod tests;
+mod ui;
 
 use std::fmt;
 use std::ops::Range;
@@ -106,6 +107,9 @@ pub struct MarkdownEditor {
     table_menu: Option<table::TableMenu>,
     column_drag: Option<table::ColumnDrag>,
     image_drag: Option<mouse::ImageDrag>,
+    find: Option<ui::find::FindBar>,
+    /// The query of the find bar when it was closed.
+    last_query: String,
     _subscriptions: [Subscription; 2],
 }
 
@@ -157,6 +161,8 @@ impl MarkdownEditor {
             table_menu: None,
             column_drag: None,
             image_drag: None,
+            find: None,
+            last_query: String::new(),
             _subscriptions: subscriptions,
         }
     }
@@ -211,9 +217,12 @@ impl MarkdownEditor {
     ///
     /// Changes made by a command are part of the undo history and emit
     /// [`EditorEvent::Changed`] like edits made by the user.
-    /// [`Command::FoldHeading`] and [`Command::OpenFind`] have no effect yet.
     pub fn command(&mut self, cmd: Command, window: &mut Window, cx: &mut Context<Self>) {
         match cmd {
+            Command::OpenFind => {
+                self.open_find(window, cx);
+                return;
+            }
             // The command selects the whole document; Ctrl+A grows the
             // selection from the block to the document.
             Command::SelectAll => {
@@ -233,28 +242,7 @@ impl MarkdownEditor {
     /// nested blocks and table cells. Matches do not overlap and never span
     /// two blocks. An empty query finds nothing.
     pub fn find(&self, query: &str) -> Vec<TextRange> {
-        let mut ranges = Vec::new();
-        if query.is_empty() {
-            return ranges;
-        }
-        let needle = query.to_lowercase();
-        visit_texts(self.state.doc.blocks(), &mut |block, text| {
-            ranges.extend(
-                find_ignore_case(text, &needle)
-                    .into_iter()
-                    .map(|range| TextRange {
-                        start: TextPos {
-                            block,
-                            offset: range.start,
-                        },
-                        end: TextPos {
-                            block,
-                            offset: range.end,
-                        },
-                    }),
-            );
-        });
-        ranges
+        self.find_matches(query, false)
     }
 
     /// Highlights the given ranges, for example the hits of a search run by
@@ -380,6 +368,10 @@ impl MarkdownEditor {
         }
     }
 
+    /// Unfolds the folded sections that hide `block`. Placeholder until
+    /// folding lands.
+    fn unfold_around(&mut self, _block: BlockId, _cx: &mut Context<Self>) {}
+
     /// Scrolls the caret (or the selected node) into view at the next frame.
     fn reveal_selection(&self) {
         let pos = match &self.state.selection {
@@ -417,6 +409,9 @@ impl MarkdownEditor {
         }
         if changes.content {
             self.view.invalidate(changes.blocks);
+            if self.find.is_some() {
+                self.refresh_find(false, cx);
+            }
             window.notify_text_input_changed(&self.focus);
             cx.emit(EditorEvent::Changed);
         }
@@ -474,15 +469,19 @@ impl Render for MarkdownEditor {
                 self.blink = None;
             }
         }
-        let root = div()
+        let document = div()
             .key_context(keys::CONTEXT)
             .track_focus(&self.focus)
-            .relative()
             .size_full();
-        keys::bind_actions(root, cx)
+        let document = keys::bind_actions(document, cx)
             .child(DocumentElement::new(self.view.clone(), cx.entity()))
             .child(Scrollbar::vertical(&self.view))
-            .children(self.render_table_menu(cx))
+            .children(self.render_table_menu(cx));
+        div()
+            .relative()
+            .size_full()
+            .child(document)
+            .children(self.render_find(cx))
     }
 }
 

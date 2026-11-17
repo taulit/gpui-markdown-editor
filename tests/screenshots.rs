@@ -348,6 +348,41 @@ fn e3_image() {
 }
 
 /// Writes a PNG with a diagonal gradient between two colors.
+/// Keystrokes that type `text` (`\n` is Enter).
+fn keys_for(text: &str) -> Vec<String> {
+    text.chars()
+        .map(|ch| match ch {
+            '\n' => "enter".to_string(),
+            ' ' => "space".to_string(),
+            ch => ch.to_string(),
+        })
+        .collect()
+}
+
+/// Keystrokes from a space separated list, as in `simulate_keystrokes`.
+fn keys(list: &str) -> Vec<String> {
+    list.split(' ').map(str::to_string).collect()
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e3_find() {
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        let mut typed = keys("ctrl-f");
+        typed.extend(keys_for("the"));
+        typed.extend(keys("enter"));
+        capture_with_keys(
+            &format!("e3-find-{name}"),
+            mode,
+            E2_NOTE,
+            |_, _| {},
+            &[],
+            &typed,
+            None,
+        );
+    }
+}
+
 fn write_gradient(path: &Path, width: u32, height: u32, from: [u8; 3], to: [u8; 3]) {
     let img = image::RgbaImage::from_fn(width, height, |x, y| {
         let t = (x as f32 / width as f32 + y as f32 / height as f32) / 2.;
@@ -544,6 +579,13 @@ fn apply_sheaf_theme(mode: ThemeMode, cx: &mut gpui::App) {
         theme.link = accent;
         theme.caret = accent;
         theme.selection = accent.opacity(0.4);
+        // Popovers and menus: `pop` of the prototype.
+        theme.popover = if mode.is_dark() {
+            rgb(0x38383d).into()
+        } else {
+            rgb(0xffffff).into()
+        };
+        theme.popover_foreground = foreground;
         if let Some(font) = font {
             theme.font_family = font.into();
         }
