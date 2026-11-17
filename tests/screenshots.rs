@@ -235,6 +235,42 @@ fn e2_typing() {
     }
 }
 
+/// Frames for the README animation: typing with input rules, one frame
+/// every few keys, written to `target/readme-typing/` (combined into
+/// `docs/screenshots/typing.gif` by `scripts/readme-gif.sh`).
+#[test]
+#[ignore = "needs a GPU and writes target/readme-typing, run scripts/readme-gif.sh"]
+fn readme_typing_frames() {
+    let typed = "Groceries\n## Market\n[] Apples\nBread\n\nOnly **organic** milk.";
+    let keys: Vec<String> = typed
+        .chars()
+        .map(|ch| match ch {
+            '\n' => "enter".to_string(),
+            ' ' => "space".to_string(),
+            ch => ch.to_string(),
+        })
+        .collect();
+    let mut frame = 0;
+    // The last frame repeats so the loop pauses on the result.
+    for end in (0..=keys.len())
+        .step_by(2)
+        .chain(std::iter::repeat_n(keys.len(), 8))
+    {
+        // Relative to docs/screenshots, where `capture_with_keys` writes.
+        let name = format!("../../target/readme-typing/frame-{frame:03}");
+        capture_with_keys(
+            &name,
+            ThemeMode::Light,
+            "",
+            |_, _| {},
+            &[],
+            &keys[..end],
+            None,
+        );
+        frame += 1;
+    }
+}
+
 const E3_TABLE: &str = "\
 Trip budget
 

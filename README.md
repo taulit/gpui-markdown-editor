@@ -2,6 +2,8 @@
 
 WYSIWYG Markdown editor component for GPUI (Zed's UI framework) – lossless round-trip, tables, checklists, images.
 
+![Typing with Markdown input rules: a heading, a checklist and bold text form as you type](docs/screenshots/typing.gif)
+
 <p>
   <img src="docs/screenshots/e2-note-light.png" alt="A note in the editor, light theme" width="49%">
   <img src="docs/screenshots/e2-note-dark.png" alt="The same note, dark theme" width="49%">
@@ -51,7 +53,7 @@ fn new_editor(window: &mut Window, cx: &mut Context<Note>) -> Entity<MarkdownEdi
 }
 ```
 
-Render the entity as a child of your view. Complete programs: `cargo run --example basic` (minimal), `cargo run --example notes` (every feature), `cargo run --example headless` (no window). The [crate documentation](https://docs.rs/gpui-markdown-editor) (`cargo doc --open`) covers options, commands, extensions, `DocMeta`, images and key rebinding.
+Render the entity as a child of your view. Complete programs: `cargo run --example basic` (minimal), `cargo run --example notes` (every feature), `cargo run --example headless` (no window). The crate documentation (`cargo doc --open`) covers options, commands, extensions, `DocMeta`, images and key rebinding.
 
 ## Shortcuts
 
@@ -87,7 +89,7 @@ Use gpui-component's code editor to edit Markdown as text, its `TextView` to dis
 
 ## Performance
 
-Typing stays within a few milliseconds per keystroke in a 10,000-block document; parse and layout numbers against the budgets are in [docs/performance.md](docs/performance.md).
+A keystroke with its frame takes about 1.5 ms in a 10,000-block document and opening 1 MB about 31 ms (budgets 4 ms and 50 ms); all numbers are in [docs/performance.md](docs/performance.md).
 
 ## Versions
 

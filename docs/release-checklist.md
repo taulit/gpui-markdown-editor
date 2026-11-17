@@ -79,8 +79,9 @@ Automated tests cover these only in simulation or offscreen.
 - [ ] Proposal at longbridge/gpui-component (issue or discussion) to take the
       crate into GPUI Kit (plan §13).
 
-## Open TODOs
+## Optional
 
-- [ ] README GIF: an animated recording of typing with input rules. It needs
-      a real window; record it on a desktop (for example with Peek or
-      `wf-recorder` + `gifski`) and add it at the top of the README.
+- [ ] The README animation (`docs/screenshots/typing.gif`) is rendered
+      offscreen by `scripts/readme-gif.sh`, without a mouse pointer or
+      window chrome. A recording from a real desktop (for example Peek, or
+      `wf-recorder` and `ffmpeg`) can replace it.
