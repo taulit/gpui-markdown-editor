@@ -164,6 +164,7 @@ impl EditorState {
         }
         self.marked = None;
         let composing = self.history.is_composing();
+        self.ime_edit = composing;
         let changed = if text.is_empty() {
             self.type_text("", now)
         } else if had_marked || composing {
@@ -171,6 +172,7 @@ impl EditorState {
         } else {
             self.insert_text(text, now)
         };
+        self.ime_edit = false;
         self.end_composition();
         changed
     }
@@ -197,7 +199,9 @@ impl EditorState {
         if let Some((node, range)) = target {
             self.select_for_ime(node, range);
         }
+        self.ime_edit = true;
         let changed = self.type_text(text, now);
+        self.ime_edit = false;
         let Some(head) = self.selection.head() else {
             self.marked = None;
             self.end_composition();

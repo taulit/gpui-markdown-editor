@@ -66,6 +66,9 @@ impl EditorState {
                 else {
                     return String::new();
                 };
+                if start.block == end.block {
+                    return self.inline_markdown(start, end);
+                }
                 let mut selected = HashSet::new();
                 for stop in order::stops_between(&self.doc, &from, &to) {
                     match &stop.loc {
@@ -91,13 +94,47 @@ impl EditorState {
         fragment.normalized()
     }
 
+    /// Part of one text node as inline Markdown (its text as is in code and
+    /// raw blocks), with a final line break.
+    fn inline_markdown(&self, start: TextPos, end: TextPos) -> String {
+        let Some(inline) = self.text_of(start.block) else {
+            return String::new();
+        };
+        let Some(part) = inline.text.get(start.offset..end.offset) else {
+            return String::new();
+        };
+        let literal = self.locate(start.block).is_some_and(|loc| {
+            !loc.is_cell()
+                && order::block_at(&self.doc.blocks, loc.block_path())
+                    .is_some_and(|b| order::is_literal(&b.kind))
+        });
+        if literal {
+            return format!("{part}\n");
+        }
+        let content = inline_ops::slice(inline, start.offset..end.offset);
+        let id = BlockId(self.doc.next_id);
+        let fragment = Document {
+            blocks: vec![crate::edit::ops::new_block(
+                id,
+                BlockKind::Paragraph,
+                content,
+            )],
+            source: Arc::from(""),
+            next_id: self.doc.next_id + 1,
+            extensions: self.doc.extensions.clone(),
+        };
+        fragment.normalized()
+    }
+
     /// The selection as Markdown for the clipboard, without the final line
-    /// break, so that a copied word pastes as that word elsewhere.
+    /// break, so that a copied word pastes as that word elsewhere. Spaces at
+    /// the very start and end are written as they are: pasting restores
+    /// them.
     pub(crate) fn copy_text(&self) -> String {
         let mut text = self.selected_markdown();
         let len = text.trim_end_matches('\n').len();
         text.truncate(len);
-        text
+        plain_edge_spaces(&text)
     }
 
     /// Pastes clipboard text. A URL pasted over selected text links it;
@@ -130,6 +167,29 @@ impl EditorState {
     /// is only paragraphs is inserted inline: the first paragraph joins the
     /// current block, the text after the caret joins the last.
     pub(crate) fn insert_markdown(&mut self, markdown: &str) -> bool {
+        // Spaces at the edges of the text are content (see `copy_text`).
+        let core = markdown.trim_matches([' ', '\t']);
+        let lead = &markdown[..markdown.len() - markdown.trim_start_matches([' ', '\t']).len()];
+        let trail = &markdown[markdown.trim_end_matches([' ', '\t']).len()..];
+        if !core.is_empty() && (!lead.is_empty() || !trail.is_empty()) {
+            let fragment = Document::parse_with(core, self.doc.extensions.clone());
+            let inline_only = !fragment.blocks.is_empty()
+                && fragment
+                    .blocks
+                    .iter()
+                    .all(|b| b.kind == BlockKind::Paragraph && b.children.is_empty());
+            if inline_only && !self.selection_in_cell() {
+                let mut lines: Vec<Inline> =
+                    fragment.blocks.into_iter().map(|b| b.content).collect();
+                if let Some(first) = lines.first_mut() {
+                    *first = inline_ops::concat(&Inline::plain(lead), first);
+                }
+                if let Some(last) = lines.last_mut() {
+                    *last = inline_ops::concat(last, &Inline::plain(trail));
+                }
+                return self.insert_inline_lines(lines);
+            }
+        }
         let fragment = Document::parse_with(markdown, self.doc.extensions.clone());
         let blocks = fragment.blocks;
         if blocks.is_empty() {
@@ -138,11 +198,7 @@ impl EditorState {
         let inline_only = blocks
             .iter()
             .all(|b| b.kind == BlockKind::Paragraph && b.children.is_empty());
-        let in_cell = self
-            .selection
-            .head()
-            .and_then(|head| self.locate(head.block))
-            .is_some_and(|loc| loc.is_cell());
+        let in_cell = self.selection_in_cell();
         if inline_only && !in_cell {
             let lines = blocks.into_iter().map(|b| b.content).collect();
             return self.insert_inline_lines(lines);
@@ -176,6 +232,15 @@ impl EditorState {
                 }
             }
         })
+    }
+}
+
+impl EditorState {
+    fn selection_in_cell(&self) -> bool {
+        self.selection
+            .head()
+            .and_then(|head| self.locate(head.block))
+            .is_some_and(|loc| loc.is_cell())
     }
 }
 
@@ -355,15 +420,32 @@ pub(crate) fn is_url(text: &str) -> bool {
     rest.is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace))
 }
 
+/// `text` with a `&#32;` at its very start and end written as a space.
+fn plain_edge_spaces(text: &str) -> String {
+    const ENTITY: &str = "&#32;";
+    let mut out = text;
+    let mut lead = "";
+    let mut trail = "";
+    if let Some(rest) = out.strip_prefix(ENTITY) {
+        lead = " ";
+        out = rest;
+    }
+    if let Some(rest) = out.strip_suffix(ENTITY) {
+        // An odd number of backslashes in front escapes the `&`.
+        let backslashes = rest.len() - rest.trim_end_matches('\\').len();
+        if backslashes % 2 == 0 {
+            trail = " ";
+            out = rest;
+        }
+    }
+    format!("{lead}{out}{trail}")
+}
+
 /// `true` if a parsed fragment is only paragraphs without formatting.
 fn is_plain(fragment: &Document) -> bool {
     fragment.blocks.iter().all(|block| {
         block.kind == BlockKind::Paragraph
             && block.children.is_empty()
-            && block
-                .content
-                .marks
-                .iter()
-                .all(|span| span.mark == crate::model::Mark::Raw)
+            && block.content.marks.is_empty()
     })
 }

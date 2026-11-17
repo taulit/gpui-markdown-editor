@@ -58,6 +58,8 @@ pub(crate) struct EditorState {
     pub(crate) rule_armed: bool,
     /// The node and its text before the IME composition in progress.
     pub(crate) composing: Option<(BlockId, Inline)>,
+    /// The IME is editing: its edits belong to the composition.
+    pub(crate) ime_edit: bool,
     changes: Changes,
 }
 
@@ -74,6 +76,7 @@ impl EditorState {
             placeholder: None,
             rule_armed: false,
             composing: None,
+            ime_edit: false,
             changes: Changes::default(),
         };
         state.reset_selection();
@@ -465,6 +468,10 @@ impl EditorState {
         text: &str,
         f: impl FnOnce(&mut Tr<'_>, &Selection) -> EditResult<Selection>,
     ) -> bool {
+        if !self.ime_edit && self.history.is_composing() {
+            // Any other edit ends the composition first.
+            self.end_composition();
+        }
         let before = self.selection.clone();
         let mut tr = Tr::new(&mut self.doc, &self.index);
         let result = f(&mut tr, &before).and_then(|after| {

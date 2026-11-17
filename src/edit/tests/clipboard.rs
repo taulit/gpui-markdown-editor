@@ -21,8 +21,8 @@ fn selected_text_and_markdown() {
 
 #[test]
 fn selected_markdown_of_a_child_without_its_parent() {
-    let state = ed("- parent\n  - ch«ild‸\n");
-    assert_eq!(state.selected_markdown(), "- ild\n");
+    let state = ed("- parent\n  - ch«ild\n  - ot‸her\n");
+    assert_eq!(state.selected_markdown(), "- ild\n- ot\n");
 }
 
 #[test]
@@ -116,4 +116,39 @@ fn deleting_a_range_that_covers_a_table_removes_it() {
     let mut state = ed("| «a | b |\n|---|---|\n| c | d |\n\nnext‸ line\n");
     backspace(&mut state);
     assert_eq!(md(&state), "&#32;line\n");
+}
+
+#[test]
+fn part_of_one_block_copies_as_inline_markdown() {
+    let state = ed("# Ti«tle‸\n");
+    assert_eq!(state.copy_text(), "tle");
+    let state = ed("- a *it«al‸ic*\n");
+    assert_eq!(state.copy_text(), "*al*");
+    let text = ed("# Ti«tle‸\n").copy_text();
+    let mut state = ed("x‸y\n\n- item\n");
+    state.paste_text(&text);
+    assert_eq!(md(&state), "xtley\n\n- item\n");
+    let state = ed("```\na *«b‸\n```\n");
+    assert_eq!(state.copy_text(), "b");
+}
+
+#[test]
+fn inline_html_survives_copy_and_paste() {
+    let source = ed("«x <y> z‸\n");
+    let text = source.copy_text();
+    let mut state = ed("a‸\n");
+    state.paste_text(&text);
+    assert_eq!(md(&state), "ax <y> z\n");
+}
+
+#[test]
+fn edge_spaces_are_copied_plain_and_pasted_back() {
+    let state = ed("a« b **c** ‸d\n");
+    assert_eq!(state.copy_text(), " b **c** ");
+    let text = state.copy_text();
+    let mut state = ed("x‸y\n");
+    state.paste_text(&text);
+    assert_eq!(md(&state), "x b **c** y\n");
+    let state = ed("a«b ‸c\n");
+    assert_eq!(state.copy_text(), "b ");
 }
