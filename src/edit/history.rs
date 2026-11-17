@@ -1,0 +1,207 @@
+//! Undo and redo.
+//!
+//! Typing is grouped into one entry while keystrokes are less than
+//! [`GROUP_INTERVAL`] apart, stay in one text node and do not start a new
+//! word. Everything else is an entry of its own.
+
+use std::time::{Duration, Instant};
+
+use super::transaction::Transaction;
+use crate::model::BlockId;
+
+/// Keystrokes closer together than this are undone together.
+pub(crate) const GROUP_INTERVAL: Duration = Duration::from_millis(500);
+
+/// What kind of edit an entry is, for grouping.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EditKind {
+    /// Text typed into a node.
+    Insert { node: BlockId },
+    /// Backspace inside a node.
+    DeleteBackward { node: BlockId },
+    /// Delete inside a node.
+    DeleteForward { node: BlockId },
+    /// Anything else, never merged.
+    Other,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Entry {
+    /// Identifies the entry for [`History::position`]; kept when typing
+    /// merges into it.
+    id: u64,
+    pub(crate) forward: Transaction,
+    pub(crate) inverse: Transaction,
+    kind: EditKind,
+    time: Option<Instant>,
+    /// The typed text ended with whitespace: the next word starts a new entry.
+    word_end: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct History {
+    undo: Vec<Entry>,
+    redo: Vec<Entry>,
+    /// Set when the selection moved: the next edit starts a new entry.
+    sealed: bool,
+    last_id: u64,
+    /// The position with an empty undo stack.
+    base: u64,
+    /// An IME composition is in progress: its edits form one entry, with
+    /// the id of that entry once there is one.
+    compose: Option<Option<u64>>,
+}
+
+impl History {
+    pub(crate) fn clear(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+        self.sealed = false;
+        // A new base: the content no longer matches any earlier position.
+        self.last_id += 1;
+        self.base = self.last_id;
+    }
+
+    /// Identifies the current state of the document in the history: equal
+    /// positions mean equal content. Call [`Self::seal`] when remembering a
+    /// position, so that further typing does not merge into its entry.
+    pub(crate) fn position(&self) -> u64 {
+        self.undo.last().map_or(self.base, |entry| entry.id)
+    }
+
+    /// The next edit does not merge with the last entry.
+    pub(crate) fn seal(&mut self) {
+        self.sealed = true;
+    }
+
+    pub(crate) fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub(crate) fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// Records an applied transaction. `text` is the typed text for
+    /// [`EditKind::Insert`].
+    pub(crate) fn push(
+        &mut self,
+        forward: Transaction,
+        inverse: Transaction,
+        kind: EditKind,
+        time: Option<Instant>,
+        text: &str,
+    ) {
+        self.redo.clear();
+        if let Some(group) = self.compose {
+            match (group, self.undo.last_mut()) {
+                (Some(id), Some(last)) if last.id == id => {
+                    merge(last, forward, inverse, time, false);
+                }
+                _ => {
+                    self.last_id += 1;
+                    self.undo.push(Entry {
+                        id: self.last_id,
+                        forward,
+                        inverse,
+                        kind: EditKind::Other,
+                        time,
+                        word_end: false,
+                    });
+                    self.compose = Some(Some(self.last_id));
+                }
+            }
+            self.sealed = true;
+            return;
+        }
+        let starts_word = !text.starts_with(char::is_whitespace);
+        let word_end = text.ends_with(char::is_whitespace);
+        let sealed = std::mem::take(&mut self.sealed);
+        if let Some(last) = self.undo.last_mut() {
+            let close = match (last.time, time) {
+                (Some(last), Some(now)) => now.saturating_duration_since(last) < GROUP_INTERVAL,
+                _ => false,
+            };
+            let new_word = matches!(kind, EditKind::Insert { .. }) && last.word_end && starts_word;
+            if !sealed && kind != EditKind::Other && last.kind == kind && close && !new_word {
+                merge(last, forward, inverse, time, word_end);
+                return;
+            }
+        }
+        self.last_id += 1;
+        self.undo.push(Entry {
+            id: self.last_id,
+            forward,
+            inverse,
+            kind,
+            time,
+            word_end,
+        });
+    }
+
+    /// Starts an IME composition: its edits until [`Self::end_compose`]
+    /// become one entry of their own.
+    pub(crate) fn begin_compose(&mut self) {
+        self.sealed = true;
+        self.compose = Some(None);
+    }
+
+    pub(crate) fn is_composing(&self) -> bool {
+        self.compose.is_some()
+    }
+
+    /// Ends the composition. Returns the id of its entry, if it made one.
+    pub(crate) fn end_compose(&mut self) -> Option<u64> {
+        let group = self.compose.take()?;
+        self.sealed = true;
+        group
+    }
+
+    pub(crate) fn pop_undo(&mut self) -> Option<Entry> {
+        self.compose = None;
+        self.sealed = true;
+        self.undo.pop()
+    }
+
+    pub(crate) fn pop_redo(&mut self) -> Option<Entry> {
+        self.sealed = true;
+        self.redo.pop()
+    }
+
+    pub(crate) fn push_redo(&mut self, entry: Entry) {
+        self.redo.push(entry);
+    }
+
+    /// Puts an entry back after redoing it, without clearing the redo stack.
+    pub(crate) fn push_undone(&mut self, entry: Entry) {
+        self.undo.push(entry);
+    }
+}
+
+/// Appends a transaction to the entry `last`.
+fn merge(
+    last: &mut Entry,
+    forward: Transaction,
+    inverse: Transaction,
+    time: Option<Instant>,
+    word_end: bool,
+) {
+    last.forward.steps.extend(forward.steps);
+    last.forward.selection_after = forward.selection_after;
+    let mut steps = inverse.steps;
+    steps.append(&mut last.inverse.steps);
+    last.inverse.steps = steps;
+    last.inverse.selection_before = inverse.selection_before;
+    for (id, dirty) in inverse.restore_dirty {
+        if !last
+            .inverse
+            .restore_dirty
+            .iter()
+            .any(|(known, _)| *known == id)
+        {
+            last.inverse.restore_dirty.push((id, dirty));
+        }
+    }
+    last.time = time;
+    last.word_end = word_end;
+}

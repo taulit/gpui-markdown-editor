@@ -44,6 +44,8 @@ pub struct EditorStyle {
     pub padding: Edges<Pixels>,
     /// Space between two blocks.
     pub paragraph_spacing: Pixels,
+    /// Space between a list marker (bullet or number) and the item text.
+    pub list_marker_gap: Pixels,
 
     /// Font size of the title: level 1 headings, and the first block with
     /// [`first_line_is_title`](crate::EditorOptions::first_line_is_title).
@@ -60,16 +62,31 @@ pub struct EditorStyle {
     pub h3_weight: FontWeight,
     /// Line height of the title and of headings.
     pub heading_line_height: f32,
+    /// Space above headings (not above the first block). Level 3 and deeper
+    /// get 70 % of it.
+    pub heading_spacing_above: Pixels,
+    /// Space below level 2 and deeper headings.
+    pub heading_spacing_below: Pixels,
+    /// Space below the title.
+    pub title_spacing_below: Pixels,
 
     /// Font family of inline code and code blocks.
     pub code_font_family: SharedString,
     /// Font size of inline code and code blocks.
     pub code_size: Pixels,
+    /// Line height of code blocks.
+    pub code_line_height: f32,
     /// Background of inline code and code blocks.
     pub code_background: Hsla,
+    /// Corner radius of code blocks and inline code.
+    pub code_radius: Pixels,
 
     /// Color of the bar on the left of a quote.
     pub quote_bar_color: Hsla,
+    /// Width of the bar on the left of a quote.
+    pub quote_bar_width: Pixels,
+    /// Space between the quote bar and the quoted text.
+    pub quote_indent: Pixels,
 
     /// Diameter of the round checkbox of a checklist item.
     pub checkbox_size: Pixels,
@@ -79,11 +96,19 @@ pub struct EditorStyle {
     pub checkbox_checked_color: Hsla,
     /// Color of the tick inside a ticked checkbox.
     pub checkbox_check_color: Hsla,
+    /// Space between the checkbox and the item text.
+    pub checkbox_gap: Pixels,
 
     /// Color of the hairlines between table cells.
     pub table_border_color: Hsla,
     /// Background of the header row of a table.
     pub table_header_background: Hsla,
+    /// Font size of table cells.
+    pub table_text_size: Pixels,
+    /// Line height of table cells.
+    pub table_line_height: f32,
+    /// Space between the hairlines and the text of a table cell.
+    pub table_cell_padding: Edges<Pixels>,
 
     /// Color of links and wiki links.
     pub link_color: Hsla,
@@ -96,9 +121,15 @@ pub struct EditorStyle {
     pub selection_color: Hsla,
     /// Color of the text cursor.
     pub caret_color: Hsla,
+    /// Width of the text cursor.
+    pub caret_width: Pixels,
+    /// Color of the ring around a selected image, rule or table.
+    pub node_selection_color: Hsla,
 
     /// Corner radius of images.
     pub image_radius: Pixels,
+    /// Height of the box shown while an image is not loaded.
+    pub image_placeholder_height: Pixels,
 }
 
 impl EditorStyle {
@@ -125,6 +156,7 @@ impl EditorStyle {
                 left: px(48.),
             },
             paragraph_spacing: px(6.),
+            list_marker_gap: px(10.),
 
             title_size: px(28.),
             title_weight: FontWeight::EXTRA_BOLD,
@@ -133,28 +165,47 @@ impl EditorStyle {
             h3_size: px(16.),
             h3_weight: FontWeight::BOLD,
             heading_line_height: 1.2,
+            heading_spacing_above: px(22.),
+            heading_spacing_below: px(6.),
+            title_spacing_below: px(10.),
 
             code_font_family: theme.mono_font_family.clone(),
             code_size: px(14.),
+            code_line_height: 1.5,
             code_background: theme.muted,
+            code_radius: px(8.),
 
             quote_bar_color: accent,
+            quote_bar_width: px(3.),
+            quote_indent: px(14.),
 
             checkbox_size: px(21.),
             checkbox_border_color: theme.foreground.opacity(0.4),
             checkbox_checked_color: accent,
             checkbox_check_color: white(),
+            checkbox_gap: px(12.),
 
             table_border_color: theme.border,
             table_header_background: theme.muted,
+            table_text_size: px(14.5),
+            table_line_height: 1.4,
+            table_cell_padding: Edges {
+                top: px(8.),
+                right: px(12.),
+                bottom: px(8.),
+                left: px(12.),
+            },
 
             link_color: theme.link,
             tag_color: theme.link,
             highlight_color: accent.opacity(0.25),
-            selection_color: theme.selection,
+            selection_color: accent.opacity(0.28),
             caret_color: theme.caret,
+            caret_width: px(2.),
+            node_selection_color: accent,
 
             image_radius: px(12.),
+            image_placeholder_height: px(220.),
         }
     }
 }

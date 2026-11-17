@@ -1,23 +1,36 @@
 //! The editor entity.
 
+mod input;
+mod keys;
+mod mouse;
+#[cfg(test)]
+mod tests;
+
 use std::fmt;
 use std::ops::Range;
+use std::time::{Duration, Instant};
 
 use gpui::{
-    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
-    ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
-    prelude::FluentBuilder as _, relative,
+    App, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, Render, Styled as _, Subscription, Task, Window, div,
 };
-use gpui_component::input::{InputEvent, Redo, Textarea, TextareaState, Undo};
+use gpui_component::scroll::Scrollbar;
 use unicode_segmentation::UnicodeSegmentation as _;
 
+pub use keys::init;
+
 use crate::command::Command;
+use crate::edit::{EditorState, Selection};
 use crate::event::EditorEvent;
 use crate::extension::Extensions;
 use crate::meta::DocMeta;
 use crate::model::{Block, BlockId, BlockKind, Document, TextPos, TextRange};
 use crate::options::EditorOptions;
 use crate::style::EditorStyle;
+use crate::view::{DocumentElement, DocumentView, LayoutInput};
+
+/// How long the caret stays on and off while blinking.
+const BLINK_INTERVAL: Duration = Duration::from_millis(530);
 
 /// A Markdown editor view.
 ///
@@ -53,24 +66,37 @@ use crate::style::EditorStyle;
 ///
 /// The editor fills the space its parent gives it and scrolls its content
 /// itself. gpui-component must be initialized (`gpui_component::init`) before
-/// the first editor is created.
+/// the first editor is created; call [`init`] at startup as
+/// well to register the key bindings.
+///
+/// # Interaction
+///
+/// The document is edited in place (WYSIWYG). A click places the caret; a
+/// click on a link, wiki link or tag with the secondary modifier held (Ctrl,
+/// Cmd on macOS) emits [`EditorEvent::LinkClicked`],
+/// [`EditorEvent::WikiLinkClicked`] or [`EditorEvent::TagClicked`], as in
+/// Notion. The mouse cursor turns into a pointer over links while the
+/// modifier is held, and over checkboxes, which toggle on click.
 pub struct MarkdownEditor {
-    input: Entity<TextareaState>,
+    state: EditorState,
     /// The options without [`EditorOptions::extensions`], which live on in
-    /// `extensions`.
+    /// the document.
     options: EditorOptions,
-    extensions: Extensions,
-    /// Always parsed from the text the user sees.
-    document: Document,
-    /// Text set with `set_markdown` that the input has not received yet,
-    /// because updating the input needs a window.
-    pending_text: Option<SharedString>,
-    dirty: bool,
-    selection: Range<usize>,
+    focus: FocusHandle,
+    focused: bool,
+    /// The history position of the saved content, see `is_dirty`.
+    saved: u64,
     style: EditorStyle,
     meta: DocMeta,
     highlights: Vec<TextRange>,
-    scroll_target: Option<TextRange>,
+    /// Layout and scroll state of the rendered document.
+    view: DocumentView,
+    /// The window x that vertical caret movement aims for.
+    goal_x: Option<Pixels>,
+    caret_on: bool,
+    blink_epoch: usize,
+    blink: Option<Task<()>>,
+    drag: Option<mouse::Drag>,
     _subscriptions: [Subscription; 2],
 }
 
@@ -79,50 +105,65 @@ impl EventEmitter<EditorEvent> for MarkdownEditor {}
 impl MarkdownEditor {
     /// Creates an empty editor.
     ///
-    /// The style starts as [`EditorStyle::from_theme`].
+    /// The style starts as [`EditorStyle::from_theme`]. Registers the key
+    /// bindings if [`init`] was not called yet.
     pub fn new(window: &mut Window, cx: &mut Context<Self>, mut options: EditorOptions) -> Self {
+        init(cx);
         let extensions = Extensions::new(std::mem::take(&mut options.extensions));
-        let find_bar = cfg!(feature = "ui") && options.ui.find_bar;
-        let input = cx.new(|cx| TextareaState::new(window, cx).searchable(find_bar));
+        let focus = cx.focus_handle();
         let subscriptions = [
-            cx.subscribe(&input, |this, _, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change) {
-                    this.sync_document(cx);
-                }
+            cx.on_focus(&focus, window, |this, _, cx| {
+                this.focused = true;
+                this.restart_blink(cx);
+                cx.notify();
             }),
-            cx.observe(&input, |this, _, cx| this.sync_selection(cx)),
+            cx.on_blur(&focus, window, |this, _, cx| {
+                this.focused = false;
+                this.blink = None;
+                this.drag = None;
+                cx.notify();
+            }),
         ];
+        let mut state = EditorState::from_markdown("", extensions);
+        state.take_changes();
+        let saved = state.history.position();
 
         Self {
-            input,
+            state,
             options,
-            document: Document::parse_with("", extensions.clone()),
-            extensions,
-            pending_text: None,
-            dirty: false,
-            selection: 0..0,
+            focus,
+            focused: false,
+            saved,
             style: EditorStyle::from_theme(cx),
             meta: DocMeta::default(),
             highlights: Vec::new(),
-            scroll_target: None,
+            view: DocumentView::new(),
+            goal_x: None,
+            caret_on: true,
+            blink_epoch: 0,
+            blink: None,
+            drag: None,
             _subscriptions: subscriptions,
         }
     }
 
     /// Replaces the content with `md`.
     ///
-    /// Clears the undo history, the cursor position and the ranges set with
-    /// [`highlight`](Self::highlight). Afterwards the editor is not
+    /// Clears the undo history and the ranges set with
+    /// [`highlight`](Self::highlight), puts the caret at the start and
+    /// scrolls to the top. Afterwards the editor is not
     /// [dirty](Self::is_dirty). Does not emit [`EditorEvent::Changed`].
     ///
     /// [`meta`](Self::meta) is kept. When loading a different document, set
     /// its metadata with [`set_meta`](Self::set_meta) as well.
     pub fn set_markdown(&mut self, md: &str, cx: &mut Context<Self>) {
-        self.document = Document::parse_with(md, self.extensions.clone());
-        self.pending_text = Some(SharedString::new(md));
-        self.dirty = false;
+        self.state.set_markdown(md);
+        self.state.take_changes();
+        self.saved = self.state.history.position();
         self.highlights.clear();
-        self.scroll_target = None;
+        self.goal_x = None;
+        self.drag = None;
+        self.view.reset();
         cx.notify();
     }
 
@@ -130,44 +171,43 @@ impl MarkdownEditor {
     ///
     /// Lossless: text that was loaded with [`set_markdown`](Self::set_markdown)
     /// and not edited is returned byte for byte, including line endings and
-    /// trailing whitespace.
+    /// trailing whitespace. Edited blocks are written in a normalized style;
+    /// undoing every edit gives back the original text.
     pub fn markdown(&self) -> String {
-        self.document.source().to_owned()
+        self.state.markdown()
     }
 
-    /// Returns `true` if the content was edited since the last
-    /// [`set_markdown`](Self::set_markdown) or [`mark_saved`](Self::mark_saved).
+    /// Returns `true` if the content differs from the last
+    /// [`set_markdown`](Self::set_markdown) or [`mark_saved`](Self::mark_saved):
+    /// undoing back to that point makes the editor clean again.
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        self.state.history.position() != self.saved
     }
 
     /// Declares the current content as saved, see [`is_dirty`](Self::is_dirty).
     pub fn mark_saved(&mut self) {
-        self.dirty = false;
+        self.saved = self.state.history.position();
+        // Typing on must not merge into the saved entry.
+        self.state.history.seal();
     }
 
     /// Runs an editing command.
     ///
     /// Changes made by a command are part of the undo history and emit
     /// [`EditorEvent::Changed`] like edits made by the user.
+    /// [`Command::FoldHeading`] and [`Command::OpenFind`] have no effect yet.
     pub fn command(&mut self, cmd: Command, window: &mut Window, cx: &mut Context<Self>) {
-        self.flush_pending_text(window, cx);
         match cmd {
-            Command::Undo => self.dispatch_to_input(&Undo, window, cx),
-            Command::Redo => self.dispatch_to_input(&Redo, window, cx),
-            Command::SelectAll => self
-                .input
-                .update(cx, |input, cx| input.select_all(window, cx)),
-            Command::InsertText(text) | Command::InsertMarkdown(text) => self
-                .input
-                .update(cx, |input, cx| input.replace(text, window, cx)),
-            Command::OpenFind => self
-                .input
-                .update(cx, |input, cx| input.open_search(false, cx)),
-            _ => {}
+            // The command selects the whole document; Ctrl+A grows the
+            // selection from the block to the document.
+            Command::SelectAll => {
+                self.state.set_selection(Selection::All);
+            }
+            cmd => {
+                self.state.exec(&cmd, Instant::now());
+            }
         }
-        self.sync_document(cx);
-        self.sync_selection(cx);
+        self.after_change(false, window, cx);
     }
 
     /// Finds all occurrences of `query` in the text of the document, ignoring
@@ -182,7 +222,7 @@ impl MarkdownEditor {
             return ranges;
         }
         let needle = query.to_lowercase();
-        visit_texts(self.document.blocks(), &mut |block, text| {
+        visit_texts(self.state.doc.blocks(), &mut |block, text| {
             ranges.extend(
                 find_ignore_case(text, &needle)
                     .into_iter()
@@ -219,7 +259,7 @@ impl MarkdownEditor {
 
     /// Scrolls so that `range` is visible. Does not move the cursor.
     pub fn scroll_to(&mut self, range: TextRange, cx: &mut Context<Self>) {
-        self.scroll_target = Some(range);
+        self.view.request_reveal(range);
         cx.notify();
     }
 
@@ -238,7 +278,7 @@ impl MarkdownEditor {
     /// syntax. Words are split by Unicode rules (UAX #29).
     pub fn word_count(&self) -> usize {
         let mut count = 0;
-        visit_texts(self.document.blocks(), &mut |_, text| {
+        visit_texts(self.state.doc.blocks(), &mut |_, text| {
             count += text.unicode_words().count();
         });
         count
@@ -261,79 +301,123 @@ impl MarkdownEditor {
     /// The document model of the current content, for read access: outlines,
     /// task counts, previews.
     pub fn document(&self) -> &Document {
-        &self.document
+        &self.state.doc
     }
 
-    fn flush_pending_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = self.pending_text.take() {
-            self.selection = self.input.update(cx, |input, cx| {
-                input.set_value(text, window, cx);
-                input.selected_range()
-            });
-        }
-    }
-
-    fn dispatch_to_input(&self, action: &dyn gpui::Action, window: &mut Window, cx: &mut App) {
-        self.input
-            .focus_handle(cx)
-            .dispatch_action(action, window, cx);
-    }
-
-    /// Re-parses the document if the text of the input changed.
-    fn sync_document(&mut self, cx: &mut Context<Self>) {
-        // The input still holds the text that `set_markdown` replaced.
-        if self.pending_text.is_some() {
-            return;
-        }
-        let text = self.input.read(cx).value();
-        if text.as_ref() == self.document.source() {
-            return;
-        }
-        self.document = Document::parse_with(&text, self.extensions.clone());
-        self.dirty = true;
-        cx.emit(EditorEvent::Changed);
+    /// Sets the selection, for screenshots and tests. Offsets index the text
+    /// of the given block or cell.
+    #[doc(hidden)]
+    pub fn __set_selection(&mut self, anchor: TextPos, head: TextPos, cx: &mut Context<Self>) {
+        self.state.set_selection(Selection::Text { anchor, head });
+        self.state.take_changes();
+        self.reveal_selection();
         cx.notify();
     }
 
-    fn sync_selection(&mut self, cx: &mut Context<Self>) {
-        let selection = self.input.read(cx).selected_range();
-        if selection != self.selection {
-            self.selection = selection;
+    fn layout_input(&self) -> LayoutInput<'_> {
+        LayoutInput {
+            document: &self.state.doc,
+            style: &self.style,
+            first_line_is_title: self.options.first_line_is_title,
+            max_width: self.options.max_width,
+        }
+    }
+
+    /// Scrolls the caret (or the selected node) into view at the next frame.
+    fn reveal_selection(&self) {
+        let pos = match &self.state.selection {
+            Selection::Text { head, .. } => *head,
+            Selection::All => return,
+            Selection::Node(id) => TextPos {
+                block: *id,
+                offset: 0,
+            },
+        };
+        self.view.request_reveal(TextRange {
+            start: pos,
+            end: pos,
+        });
+    }
+
+    /// Picks up what the last operation on the state changed: relayout,
+    /// events, caret visibility. `keep_goal` keeps the goal column of
+    /// vertical movement.
+    fn after_change(&mut self, keep_goal: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let changes = self.state.take_changes();
+        if !keep_goal {
+            self.goal_x = None;
+        }
+        if changes.content || changes.selection {
+            self.reveal_selection();
+            self.restart_blink(cx);
+        }
+        if changes.content {
+            self.view.invalidate(changes.blocks);
+            window.notify_text_input_changed(&self.focus);
+            cx.emit(EditorEvent::Changed);
+        }
+        if changes.selection {
+            window.notify_text_selection_changed(&self.focus);
             cx.emit(EditorEvent::SelectionChanged);
         }
+        cx.notify();
+    }
+
+    /// Shows the caret and starts blinking after a full interval, so that
+    /// it stays visible while the user types or moves it.
+    fn restart_blink(&mut self, cx: &mut Context<Self>) {
+        self.caret_on = true;
+        self.blink_epoch += 1;
+        if !self.focused {
+            self.blink = None;
+            return;
+        }
+        let epoch = self.blink_epoch;
+        self.blink = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(BLINK_INTERVAL).await;
+                let current = this.update(cx, |this, cx| {
+                    if this.blink_epoch != epoch {
+                        return false;
+                    }
+                    this.caret_on = !this.caret_on;
+                    cx.notify();
+                    true
+                });
+                if !matches!(current, Ok(true)) {
+                    break;
+                }
+            }
+        }));
     }
 }
 
 impl Focusable for MarkdownEditor {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.input.focus_handle(cx)
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus.clone()
     }
 }
 
 impl Render for MarkdownEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.flush_pending_text(window, cx);
-
-        let style = &self.style;
-        let padding = style.padding;
-        div().size_full().flex().justify_center().child(
-            div()
-                .size_full()
-                .when_some(self.options.max_width, |this, max_width| {
-                    this.max_w(max_width + padding.left + padding.right)
-                })
-                .pt(padding.top)
-                .pl(padding.left)
-                .pr(padding.right)
-                .child(
-                    Textarea::new(&self.input)
-                        .appearance(false)
-                        .h(relative(1.))
-                        .font_family(style.font_family.clone())
-                        .text_size(style.text_size)
-                        .line_height(relative(style.line_height)),
-                ),
-        )
+        // Focus that arrived before the focus listener was active.
+        let focused = self.focus.is_focused(window);
+        if focused != self.focused {
+            self.focused = focused;
+            if focused {
+                self.restart_blink(cx);
+            } else {
+                self.blink = None;
+            }
+        }
+        let root = div()
+            .key_context(keys::CONTEXT)
+            .track_focus(&self.focus)
+            .relative()
+            .size_full();
+        keys::bind_actions(root, cx)
+            .child(DocumentElement::new(self.view.clone(), cx.entity()))
+            .child(Scrollbar::vertical(&self.view))
     }
 }
 
@@ -341,12 +425,11 @@ impl fmt::Debug for MarkdownEditor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MarkdownEditor")
             .field("options", &self.options)
-            .field("extensions", &self.extensions)
-            .field("dirty", &self.dirty)
-            .field("selection", &self.selection)
+            .field("extensions", &self.state.doc.extensions)
+            .field("dirty", &self.is_dirty())
+            .field("selection", &self.state.selection)
             .field("meta", &self.meta)
             .field("highlights", &self.highlights)
-            .field("scroll_target", &self.scroll_target)
             .finish_non_exhaustive()
     }
 }
@@ -397,7 +480,7 @@ fn find_ignore_case(text: &str, needle: &str) -> Vec<Range<usize>> {
 }
 
 #[cfg(test)]
-mod tests {
+mod find_tests {
     use super::find_ignore_case;
 
     #[test]

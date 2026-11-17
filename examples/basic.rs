@@ -87,6 +87,7 @@ impl Render for Example {
 fn main() {
     gpui_platform::application().run(|cx: &mut App| {
         gpui_component::init(cx);
+        gpui_markdown_editor::init(cx);
 
         let bounds = Bounds::centered(None, size(px(900.), px(700.)), cx);
         let options = WindowOptions {

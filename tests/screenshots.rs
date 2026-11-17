@@ -9,12 +9,14 @@ use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 use gpui::{
-    AppContext as _, Context, Entity, HeadlessAppContext, Hsla, IntoElement, ParentElement as _,
-    PlatformTextSystem, Render, Styled as _, Window, div, px, rgb, size,
+    AppContext as _, Context, Entity, Focusable as _, HeadlessAppContext, Hsla, IntoElement,
+    Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement as _, PlatformInput, PlatformTextSystem, Render, Styled as _, Window, div, point,
+    px, rgb, size,
 };
 use gpui_component::{ActiveTheme as _, Root, Theme, ThemeMode};
 use gpui_markdown_editor::extensions::{Highlight, Tag, WikiLink};
-use gpui_markdown_editor::{EditorOptions, EditorStyle, MarkdownEditor};
+use gpui_markdown_editor::{EditorOptions, EditorStyle, MarkdownEditor, TextPos, TextRange};
 
 const NOTE: &str = "\
 # Weekend trip
@@ -35,17 +37,255 @@ Leaving **Friday** at 8, back on Sunday evening. See [[Packing list]] and #trave
 > Don't forget the ==charger==.
 ";
 
+/// A Sheaf-like note with every kind of block and mark.
+const E2_NOTE: &str = "\
+Weekend in the mountains
+
+Leaving **Friday** at 8, back on *Sunday* evening. The <u>cabin</u> is booked, ~~the hotel~~ cancelled. Door code `4711`, and don't forget the ==charger==. Route on [the map](https://example.com/map), see [[Packing list]] and #travel.
+
+## Packing
+
+- Warm jacket
+- Hiking boots
+  - the new ones
+  - spare laces
+- Snacks for **two days**
+
+1. Pack the car
+2. Pick up Anna
+3. Drive up
+
+## To do
+
+- [x] Book the cabin
+- [ ] Check the tires
+- [x] Buy groceries
+- [ ] Charge the camera
+
+> The best view is from the north ridge, about an hour from the cabin.
+
+```sh
+ssh cabin.local
+uptime
+```
+
+---
+
+| Day | Plan                  | Km  |
+|-----|-----------------------|----:|
+| Sat | Hike to the lake      | 12  |
+| Sun | Breakfast, drive home | 180 |
+
+![Lake at sunrise](lake.jpg)
+";
+
 #[test]
 #[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
 fn e1_basic() {
-    capture("e1-basic-light", ThemeMode::Light, NOTE);
-    capture("e1-basic-dark", ThemeMode::Dark, NOTE);
+    capture("e1-basic-light", ThemeMode::Light, NOTE, |_, _| {});
+    capture("e1-basic-dark", ThemeMode::Dark, NOTE, |_, _| {});
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e2_note() {
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture(&format!("e2-note-{name}"), mode, E2_NOTE, |_, _| {});
+        capture(
+            &format!("e2-note-end-{name}"),
+            mode,
+            E2_NOTE,
+            |editor, cx| {
+                let last = editor.document().blocks().last().unwrap().id();
+                let pos = TextPos {
+                    block: last,
+                    offset: 0,
+                };
+                editor.scroll_to(
+                    TextRange {
+                        start: pos,
+                        end: pos,
+                    },
+                    cx,
+                );
+            },
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e2_selection() {
+    let select = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let blocks = editor.document().blocks();
+        // From the middle of the first paragraph into the first list item.
+        let anchor = TextPos {
+            block: blocks[1].id(),
+            offset: 60,
+        };
+        let head = TextPos {
+            block: blocks[3].id(),
+            offset: 4,
+        };
+        editor.__set_selection(anchor, head, cx);
+    };
+    let caret = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[1].id();
+        let pos = TextPos { block, offset: 21 };
+        editor.__set_selection(pos, pos, cx);
+    };
+    capture("e2-selection-light", ThemeMode::Light, E2_NOTE, select);
+    capture("e2-selection-dark", ThemeMode::Dark, E2_NOTE, select);
+    capture("e2-caret-light", ThemeMode::Light, E2_NOTE, caret);
+    capture("e2-caret-dark", ThemeMode::Dark, E2_NOTE, caret);
+
+    // Through the mouse: a click in the title, then a drag from the second
+    // paragraph line into the "Packing" list, and a double click on a word
+    // in the checklist.
+    let at = |x: f32, y: f32| point(px(x), px(y));
+    let down = |p, click_count| {
+        PlatformInput::MouseDown(MouseDownEvent {
+            button: MouseButton::Left,
+            position: p,
+            modifiers: Modifiers::default(),
+            click_count,
+            first_mouse: false,
+        })
+    };
+    let up = |p, click_count| {
+        PlatformInput::MouseUp(MouseUpEvent {
+            button: MouseButton::Left,
+            position: p,
+            modifiers: Modifiers::default(),
+            click_count,
+        })
+    };
+    let drag = |p| {
+        PlatformInput::MouseMove(MouseMoveEvent {
+            position: p,
+            pressed_button: Some(MouseButton::Left),
+            modifiers: Modifiers::default(),
+        })
+    };
+    let events = [
+        down(at(300., 100.), 1),
+        drag(at(400., 200.)),
+        drag(at(230., 225.)),
+        up(at(230., 225.), 1),
+    ];
+    capture_with_input(
+        "e2-mouse-drag-light",
+        ThemeMode::Light,
+        E2_NOTE,
+        |_, _| {},
+        &events,
+    );
+    let events = [
+        down(at(240., 482.), 1),
+        up(at(240., 482.), 1),
+        down(at(240., 482.), 2),
+        up(at(240., 482.), 2),
+    ];
+    capture_with_input(
+        "e2-mouse-word-dark",
+        ThemeMode::Dark,
+        E2_NOTE,
+        |_, _| {},
+        &events,
+    );
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e2_long() {
+    let markdown = long_document(10_000);
+    let scroll = |editor: &mut MarkdownEditor, cx: &mut Context<MarkdownEditor>| {
+        let block = editor.document().blocks()[5_000].id();
+        let pos = TextPos { block, offset: 0 };
+        editor.__set_selection(pos, pos, cx);
+    };
+    capture("e2-long-light", ThemeMode::Light, &markdown, scroll);
+    capture("e2-long-dark", ThemeMode::Dark, &markdown, scroll);
+}
+
+#[test]
+#[ignore = "needs a GPU and writes docs/screenshots, run scripts/screenshot.sh"]
+fn e2_typing() {
+    // Typed into an empty note: the input rules make a heading, a checklist
+    // and bold text.
+    let typed = "Shopping\n## Market\n[] Apples\nBread\nCheese\n\nOnly **organic** milk, and ~~no~~ *sugar*.";
+    let keys: Vec<String> = typed
+        .chars()
+        .map(|ch| match ch {
+            '\n' => "enter".to_string(),
+            ' ' => "space".to_string(),
+            ch => ch.to_string(),
+        })
+        .collect();
+    for (name, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+        capture_with_keys(
+            &format!("e2-typing-{name}"),
+            mode,
+            "",
+            |_, _| {},
+            &[],
+            &keys,
+        );
+    }
+}
+
+/// A document of `lines` lines: sections with paragraphs and lists.
+fn long_document(lines: usize) -> String {
+    let mut md = String::from("A very long note\n\n");
+    let mut n = 2;
+    let mut section = 1;
+    while n < lines {
+        md.push_str(&format!("## Section {section}\n\n"));
+        md.push_str(&format!(
+            "Paragraph {n} of section {section}: some **bold** words, a [link](https://example.com) and enough text to wrap onto a second line in the content column.\n\n"
+        ));
+        md.push_str(&format!(
+            "- Item one of {section}\n- [ ] Task of {section}\n- [x] Done in {section}\n\n"
+        ));
+        n += 9;
+        section += 1;
+    }
+    md
 }
 
 /// Renders `markdown` in a 900x700 window with the Sheaf look and writes it
 /// to `docs/screenshots/<name>.png`. The image has twice that size because
 /// the offscreen window has a scale factor of 2.
-fn capture(name: &str, mode: ThemeMode, markdown: &str) {
+fn capture(
+    name: &str,
+    mode: ThemeMode,
+    markdown: &str,
+    setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
+) {
+    capture_with_input(name, mode, markdown, setup, &[]);
+}
+
+/// Like [`capture`], dispatching `events` after the first frame.
+fn capture_with_input(
+    name: &str,
+    mode: ThemeMode,
+    markdown: &str,
+    setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
+    events: &[PlatformInput],
+) {
+    capture_with_keys(name, mode, markdown, setup, events, &[]);
+}
+
+/// Like [`capture_with_input`], typing `keys` (keystrokes such as `a`,
+/// `space`, `enter`) after the events.
+fn capture_with_keys(
+    name: &str,
+    mode: ThemeMode,
+    markdown: &str,
+    setup: impl Fn(&mut MarkdownEditor, &mut Context<MarkdownEditor>) + 'static,
+    events: &[PlatformInput],
+    keys: &[String],
+) {
     // Every platform instance starts its own worker threads, so the text
     // system is taken from one platform and shared by all screenshots.
     static TEXT_SYSTEM: OnceLock<Arc<dyn PlatformTextSystem>> = OnceLock::new();
@@ -59,6 +299,7 @@ fn capture(name: &str, mode: ThemeMode, markdown: &str) {
     );
     cx.update(|cx| {
         gpui_component::init(cx);
+        gpui_markdown_editor::init(cx);
         apply_sheaf_theme(mode, cx);
     });
 
@@ -73,8 +314,11 @@ fn capture(name: &str, mode: ThemeMode, markdown: &str) {
                 let mut editor = MarkdownEditor::new(window, cx, options);
                 editor.set_style(EditorStyle::from_theme(cx), cx);
                 editor.set_markdown(markdown, cx);
+                setup(&mut editor, cx);
                 editor
             });
+            // The caret is only drawn in a focused editor.
+            editor.focus_handle(cx).focus(window, cx);
             let page = cx.new(|_| Page { editor });
             cx.new(|cx| Root::new(page, window, cx))
         })
@@ -82,6 +326,22 @@ fn capture(name: &str, mode: ThemeMode, markdown: &str) {
     cx.run_until_parked();
     cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
         .expect("failed to draw");
+    if !events.is_empty() || !keys.is_empty() {
+        cx.update_window(window.into(), |_, window, cx| {
+            for event in events {
+                window.dispatch_event(event.clone(), cx);
+            }
+            let os = cx.platform_info().os;
+            for key in keys {
+                let keystroke = Keystroke::parse_with_os(key, os).expect("keystroke");
+                window.dispatch_keystroke(keystroke, cx);
+            }
+        })
+        .expect("failed to dispatch input");
+        cx.run_until_parked();
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .expect("failed to draw");
+    }
 
     let image = cx
         .capture_screenshot(window.into())
@@ -118,7 +378,10 @@ fn apply_sheaf_theme(mode: ThemeMode, cx: &mut gpui::App) {
         (rgb(0xffffff).into(), rgb(0x1d1d1f).into(), gpui::black())
     };
     let accent: Hsla = rgb(0x3584e4).into();
-    let font = ["Adwaita Sans", "Inter", "Cantarell"]
+    // Adwaita Sans and Inter come as variable fonts only, and gpui-pre 0.3
+    // loads variable faces at their default weight on Linux, which would
+    // hide bold text. Noto Sans has static weights.
+    let font = ["Noto Sans", "Adwaita Sans", "Inter", "Cantarell"]
         .into_iter()
         .find(|family| {
             cx.text_system()

@@ -15,6 +15,7 @@ use pulldown_cmark::{
 
 use super::inline::{Escaped, InlineBuilder};
 use super::prefix::{self, Container};
+use super::serialize::EMPTY_PARAGRAPH;
 use crate::extension::Extensions;
 use crate::model::{
     Align, Block, BlockId, BlockKind, Cell, Document, ImageData, Inline, Mark, TableData,
@@ -438,7 +439,13 @@ impl<'s, 'e> BlockParser<'s, 'e> {
             let content = Inline::plain(self.raw_block_text(range.clone()));
             return self.new_block(BlockKind::Raw, content, Vec::new(), range);
         }
-        self.new_block(BlockKind::Paragraph, para.inline, Vec::new(), range)
+        // `&#32;` alone is how an empty paragraph between blocks is written.
+        let inline = if self.source.get(range.clone()).map(str::trim) == Some(EMPTY_PARAGRAPH) {
+            Inline::default()
+        } else {
+            para.inline
+        };
+        self.new_block(BlockKind::Paragraph, inline, Vec::new(), range)
     }
 
     fn quote(&mut self, range: Range<usize>, out: &mut Vec<Block>) {

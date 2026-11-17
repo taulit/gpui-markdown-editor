@@ -14,6 +14,7 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant: unmaintained, transitive via zbus (Linux platform)" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names: unmaintained, transitive via zbus (Linux platform)" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: unmaintained, transitive via zbus (Linux platform)" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono: unmaintained, transitive via gpui-component" },
 ]
 
 [licenses]

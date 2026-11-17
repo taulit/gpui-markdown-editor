@@ -631,7 +631,8 @@ impl InlineWriter<'_> {
                 let exposed = if start == 0 {
                     first_tok
                 } else {
-                    body[..start].ends_with([' ', '\t'])
+                    // A line break is written as a space in a heading.
+                    body[..start].ends_with([' ', '\t', '\n'])
                 };
                 (hashes > 0 && exposed).then_some(range.start + start)
             })

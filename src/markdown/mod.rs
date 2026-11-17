@@ -17,6 +17,8 @@ mod write_inline;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use inline::normalize_marks;
+
 use crate::extension::Extensions;
 use crate::model::{Block, BlockId, Document};
 

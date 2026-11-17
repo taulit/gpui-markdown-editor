@@ -1,0 +1,442 @@
+//! Keyboard: actions, their default bindings and what they do.
+
+use std::time::Instant;
+
+use gpui::{
+    App, ClipboardItem, Context, Div, Global, InteractiveElement as _, KeyBinding,
+    KeyBindingContextPredicate, OperatingSystem, Window, actions,
+};
+
+use super::MarkdownEditor;
+use crate::command::Command;
+use crate::edit::{Selection, Unit};
+use crate::model::{BlockKind, Mark, TextPos};
+
+/// The key context of the editor, for host key bindings.
+pub(crate) const CONTEXT: &str = "MarkdownEditor";
+
+actions!(
+    markdown_editor,
+    [
+        ToggleBold,
+        ToggleItalic,
+        ToggleUnderline,
+        ToggleStrike,
+        ToggleCode,
+        ToggleHighlight,
+        ToggleLink,
+        ToggleChecklist,
+        Heading1,
+        Heading2,
+        Heading3,
+        Paragraph,
+        ToggleCheckbox,
+        MoveBlockUp,
+        MoveBlockDown,
+        Undo,
+        Redo,
+        SelectAll,
+        Newline,
+        SoftBreak,
+        Indent,
+        Outdent,
+        Backspace,
+        Delete,
+        DeleteWordLeft,
+        DeleteWordRight,
+        Left,
+        Right,
+        Up,
+        Down,
+        WordLeft,
+        WordRight,
+        LineStart,
+        LineEnd,
+        DocStart,
+        DocEnd,
+        PageUp,
+        PageDown,
+        SelectLeft,
+        SelectRight,
+        SelectUp,
+        SelectDown,
+        SelectWordLeft,
+        SelectWordRight,
+        SelectLineStart,
+        SelectLineEnd,
+        SelectDocStart,
+        SelectDocEnd,
+        SelectPageUp,
+        SelectPageDown,
+        CopySelection,
+        CutSelection,
+        PasteClipboard,
+    ]
+);
+
+/// Marks that the key bindings are registered.
+struct Bound;
+
+impl Global for Bound {}
+
+/// Registers the editor's key bindings (plan §6: Ctrl+B/I/U, Ctrl+Z, arrows,
+/// ...; Cmd instead of Ctrl on macOS). Call it once at startup, after
+/// `gpui_component::init` and before binding your own keys, so that your
+/// bindings take precedence. [`MarkdownEditor::new`] calls it if you did
+/// not; calling it again does nothing.
+///
+/// The bindings apply in the key context `MarkdownEditor`.
+pub fn init(cx: &mut App) {
+    if cx.has_global::<Bound>() {
+        return;
+    }
+    cx.set_global(Bound);
+    let bindings = bindings(cx);
+    cx.bind_keys(bindings);
+}
+
+fn bindings(cx: &App) -> Vec<KeyBinding> {
+    let mac = cx.platform_info().os == OperatingSystem::Mac;
+    let mut keys: Vec<(&str, Box<dyn gpui::Action>)> = vec![
+        ("secondary-b", Box::new(ToggleBold)),
+        ("secondary-i", Box::new(ToggleItalic)),
+        ("secondary-u", Box::new(ToggleUnderline)),
+        ("secondary-shift-x", Box::new(ToggleStrike)),
+        ("secondary-e", Box::new(ToggleCode)),
+        ("secondary-shift-h", Box::new(ToggleHighlight)),
+        ("secondary-k", Box::new(ToggleLink)),
+        ("secondary-shift-l", Box::new(ToggleChecklist)),
+        ("secondary-alt-1", Box::new(Heading1)),
+        ("secondary-alt-2", Box::new(Heading2)),
+        ("secondary-alt-3", Box::new(Heading3)),
+        ("secondary-alt-0", Box::new(Paragraph)),
+        ("secondary-enter", Box::new(ToggleCheckbox)),
+        ("alt-up", Box::new(MoveBlockUp)),
+        ("alt-down", Box::new(MoveBlockDown)),
+        ("secondary-z", Box::new(Undo)),
+        ("secondary-shift-z", Box::new(Redo)),
+        ("secondary-y", Box::new(Redo)),
+        ("secondary-a", Box::new(SelectAll)),
+        ("enter", Box::new(Newline)),
+        ("shift-enter", Box::new(SoftBreak)),
+        ("tab", Box::new(Indent)),
+        ("shift-tab", Box::new(Outdent)),
+        ("backspace", Box::new(Backspace)),
+        ("shift-backspace", Box::new(Backspace)),
+        ("delete", Box::new(Delete)),
+        ("left", Box::new(Left)),
+        ("right", Box::new(Right)),
+        ("up", Box::new(Up)),
+        ("down", Box::new(Down)),
+        ("home", Box::new(LineStart)),
+        ("end", Box::new(LineEnd)),
+        ("pageup", Box::new(PageUp)),
+        ("pagedown", Box::new(PageDown)),
+        ("shift-left", Box::new(SelectLeft)),
+        ("shift-right", Box::new(SelectRight)),
+        ("shift-up", Box::new(SelectUp)),
+        ("shift-down", Box::new(SelectDown)),
+        ("shift-home", Box::new(SelectLineStart)),
+        ("shift-end", Box::new(SelectLineEnd)),
+        ("shift-pageup", Box::new(SelectPageUp)),
+        ("shift-pagedown", Box::new(SelectPageDown)),
+        ("secondary-c", Box::new(CopySelection)),
+        ("secondary-x", Box::new(CutSelection)),
+        ("secondary-v", Box::new(PasteClipboard)),
+    ];
+    if mac {
+        keys.extend([
+            ("alt-left", Box::new(WordLeft) as Box<dyn gpui::Action>),
+            ("alt-right", Box::new(WordRight)),
+            ("alt-shift-left", Box::new(SelectWordLeft)),
+            ("alt-shift-right", Box::new(SelectWordRight)),
+            ("alt-backspace", Box::new(DeleteWordLeft)),
+            ("alt-delete", Box::new(DeleteWordRight)),
+            ("cmd-left", Box::new(LineStart)),
+            ("cmd-right", Box::new(LineEnd)),
+            ("cmd-shift-left", Box::new(SelectLineStart)),
+            ("cmd-shift-right", Box::new(SelectLineEnd)),
+            ("cmd-up", Box::new(DocStart)),
+            ("cmd-down", Box::new(DocEnd)),
+            ("cmd-shift-up", Box::new(SelectDocStart)),
+            ("cmd-shift-down", Box::new(SelectDocEnd)),
+        ]);
+    } else {
+        keys.extend([
+            ("ctrl-left", Box::new(WordLeft) as Box<dyn gpui::Action>),
+            ("ctrl-right", Box::new(WordRight)),
+            ("ctrl-shift-left", Box::new(SelectWordLeft)),
+            ("ctrl-shift-right", Box::new(SelectWordRight)),
+            ("ctrl-backspace", Box::new(DeleteWordLeft)),
+            ("ctrl-delete", Box::new(DeleteWordRight)),
+            ("ctrl-home", Box::new(DocStart)),
+            ("ctrl-end", Box::new(DocEnd)),
+            ("ctrl-shift-home", Box::new(SelectDocStart)),
+            ("ctrl-shift-end", Box::new(SelectDocEnd)),
+        ]);
+    }
+    let context = KeyBindingContextPredicate::parse(CONTEXT)
+        .ok()
+        .map(std::rc::Rc::new);
+    keys.into_iter()
+        .map(|(keystrokes, action)| {
+            KeyBinding::load(keystrokes, action, context.clone(), false, None, cx)
+                .expect("valid key binding")
+        })
+        .collect()
+}
+
+/// What a key does.
+#[derive(Clone, Debug)]
+pub(super) enum Op {
+    Command(Command),
+    Move(Motion, bool),
+    DeleteBackward(Unit),
+    DeleteForward(Unit),
+    Enter,
+    SoftBreak,
+    Tab,
+    ShiftTab,
+    Copy,
+    Cut,
+    Paste,
+    Link,
+}
+
+/// A caret movement.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Motion {
+    Left(Unit),
+    Right(Unit),
+    Up,
+    Down,
+    LineStart,
+    LineEnd,
+    DocStart,
+    DocEnd,
+    PageUp,
+    PageDown,
+}
+
+/// Adds the action handlers to the editor's root element.
+pub(super) fn bind_actions(root: Div, cx: &mut Context<MarkdownEditor>) -> Div {
+    macro_rules! ops {
+        ($root:expr; $($action:ident => $op:expr),* $(,)?) => {
+            $root $(.on_action(cx.listener(
+                |this: &mut MarkdownEditor, _: &$action, window: &mut Window, cx: &mut Context<MarkdownEditor>| {
+                    this.run($op, window, cx)
+                },
+            )))*
+        };
+    }
+    use Unit::{Grapheme, Word};
+    ops!(root;
+        ToggleBold => mark(Mark::Bold),
+        ToggleItalic => mark(Mark::Italic),
+        ToggleUnderline => mark(Mark::Underline),
+        ToggleStrike => mark(Mark::Strike),
+        ToggleCode => mark(Mark::Code),
+        ToggleHighlight => mark(Mark::Highlight),
+        ToggleLink => Op::Link,
+        ToggleChecklist => block(BlockKind::TaskItem { checked: false }),
+        Heading1 => block(BlockKind::Heading(1)),
+        Heading2 => block(BlockKind::Heading(2)),
+        Heading3 => block(BlockKind::Heading(3)),
+        Paragraph => block(BlockKind::Paragraph),
+        ToggleCheckbox => Op::Command(Command::ToggleTask),
+        MoveBlockUp => Op::Command(Command::MoveBlockUp),
+        MoveBlockDown => Op::Command(Command::MoveBlockDown),
+        Undo => Op::Command(Command::Undo),
+        Redo => Op::Command(Command::Redo),
+        SelectAll => Op::Command(Command::SelectAll),
+        Newline => Op::Enter,
+        SoftBreak => Op::SoftBreak,
+        Indent => Op::Tab,
+        Outdent => Op::ShiftTab,
+        Backspace => Op::DeleteBackward(Grapheme),
+        Delete => Op::DeleteForward(Grapheme),
+        DeleteWordLeft => Op::DeleteBackward(Word),
+        DeleteWordRight => Op::DeleteForward(Word),
+        Left => Op::Move(Motion::Left(Grapheme), false),
+        Right => Op::Move(Motion::Right(Grapheme), false),
+        Up => Op::Move(Motion::Up, false),
+        Down => Op::Move(Motion::Down, false),
+        WordLeft => Op::Move(Motion::Left(Word), false),
+        WordRight => Op::Move(Motion::Right(Word), false),
+        LineStart => Op::Move(Motion::LineStart, false),
+        LineEnd => Op::Move(Motion::LineEnd, false),
+        DocStart => Op::Move(Motion::DocStart, false),
+        DocEnd => Op::Move(Motion::DocEnd, false),
+        PageUp => Op::Move(Motion::PageUp, false),
+        PageDown => Op::Move(Motion::PageDown, false),
+        SelectLeft => Op::Move(Motion::Left(Grapheme), true),
+        SelectRight => Op::Move(Motion::Right(Grapheme), true),
+        SelectUp => Op::Move(Motion::Up, true),
+        SelectDown => Op::Move(Motion::Down, true),
+        SelectWordLeft => Op::Move(Motion::Left(Word), true),
+        SelectWordRight => Op::Move(Motion::Right(Word), true),
+        SelectLineStart => Op::Move(Motion::LineStart, true),
+        SelectLineEnd => Op::Move(Motion::LineEnd, true),
+        SelectDocStart => Op::Move(Motion::DocStart, true),
+        SelectDocEnd => Op::Move(Motion::DocEnd, true),
+        SelectPageUp => Op::Move(Motion::PageUp, true),
+        SelectPageDown => Op::Move(Motion::PageDown, true),
+        CopySelection => Op::Copy,
+        CutSelection => Op::Cut,
+        PasteClipboard => Op::Paste,
+    )
+}
+
+fn mark(mark: Mark) -> Op {
+    Op::Command(Command::ToggleMark(mark))
+}
+
+fn block(kind: BlockKind) -> Op {
+    Op::Command(Command::SetBlock(kind))
+}
+
+impl MarkdownEditor {
+    pub(super) fn run(&mut self, op: Op, window: &mut Window, cx: &mut Context<Self>) {
+        let now = Instant::now();
+        let mut keep_goal = false;
+        match op {
+            Op::Command(command) => {
+                self.state.exec(&command, now);
+            }
+            Op::Move(motion, extend) => keep_goal = self.motion(motion, extend, window),
+            Op::DeleteBackward(unit) => {
+                self.state.delete_backward(unit, now);
+            }
+            Op::DeleteForward(unit) => {
+                self.state.delete_forward(unit, now);
+            }
+            Op::Enter => {
+                self.state.enter(now);
+            }
+            Op::SoftBreak => {
+                self.state.soft_break(now);
+            }
+            Op::Tab => {
+                self.state.tab(now);
+            }
+            Op::ShiftTab => {
+                self.state.shift_tab();
+            }
+            Op::Copy => {
+                self.copy(cx);
+            }
+            Op::Cut => {
+                if self.copy(cx) {
+                    self.state.delete_selection();
+                }
+            }
+            Op::Paste => {
+                if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                    self.state.paste_text(&text);
+                }
+            }
+            Op::Link => self.toggle_link(cx),
+        }
+        self.after_change(keep_goal, window, cx);
+    }
+
+    /// Writes the selection as Markdown to the clipboard. `false` if
+    /// nothing is selected.
+    fn copy(&mut self, cx: &mut Context<Self>) -> bool {
+        let text = self.state.copy_text();
+        if text.is_empty() {
+            return false;
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        true
+    }
+
+    /// Ctrl+K: removes the link at the caret or in the selection, or links
+    /// to the URL on the clipboard.
+    fn toggle_link(&mut self, cx: &mut Context<Self>) {
+        let link = Mark::Link {
+            url: "".into(),
+            title: None,
+        };
+        if self.state.has_mark(&link) {
+            self.state.set_link(None);
+            return;
+        }
+        let url = cx
+            .read_from_clipboard()
+            .and_then(|item| item.text())
+            .map(|text| text.trim().to_string())
+            .filter(|text| crate::edit::is_url(text));
+        if let Some(url) = url {
+            self.state.set_link(Some(&url));
+        }
+    }
+
+    /// Moves the caret. Returns `true` for vertical movement, which keeps
+    /// the goal column.
+    fn motion(&mut self, motion: Motion, extend: bool, window: &mut Window) -> bool {
+        let state = &mut self.state;
+        match motion {
+            Motion::Left(unit) => {
+                state.move_left(unit, extend);
+                return false;
+            }
+            Motion::Right(unit) => {
+                state.move_right(unit, extend);
+                return false;
+            }
+            Motion::DocStart => {
+                state.move_to_doc_start(extend);
+                return false;
+            }
+            Motion::DocEnd => {
+                state.move_to_doc_end(extend);
+                return false;
+            }
+            _ => {}
+        }
+        let (anchor, head) = match state.selection.clone() {
+            Selection::Text { anchor, head } => (anchor, head),
+            Selection::Node(_) | Selection::All => {
+                match motion {
+                    Motion::Up | Motion::PageUp | Motion::LineStart => {
+                        state.move_left(Unit::Grapheme, extend)
+                    }
+                    _ => state.move_right(Unit::Grapheme, extend),
+                };
+                return false;
+            }
+        };
+        let ts = window.text_system().clone();
+        let view = self.view.clone();
+        let mut q = view.query(self.layout_input(), &ts);
+        let vertical = matches!(
+            motion,
+            Motion::Up | Motion::Down | Motion::PageUp | Motion::PageDown
+        );
+        let goal = self
+            .goal_x
+            .or_else(|| q.caret_bounds(head).map(|b| b.origin.x));
+        let target: Option<TextPos> = match (motion, goal) {
+            (Motion::Up, Some(x)) => q.position_above(head, x).or_else(|| self.state.first_pos()),
+            (Motion::Down, Some(x)) => q.position_below(head, x).or_else(|| self.state.last_pos()),
+            (Motion::PageUp, Some(x)) => q.page_up(head, x),
+            (Motion::PageDown, Some(x)) => q.page_down(head, x),
+            (Motion::LineStart, _) => q.line_start(head),
+            (Motion::LineEnd, _) => q.line_end(head),
+            _ => None,
+        };
+        drop(q);
+        if let Some(target) = target {
+            let anchor = if extend { anchor } else { target };
+            self.state.set_selection(Selection::Text {
+                anchor,
+                head: target,
+            });
+        }
+        if vertical {
+            self.goal_x = goal;
+        }
+        vertical
+    }
+}

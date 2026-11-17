@@ -3,7 +3,60 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
-## [Unreleased]
+## [0.0.3]
+
+The editor edits the rendered document (WYSIWYG) instead of the Markdown
+source.
+
+API changes:
+
+- New `gpui_markdown_editor::init(cx)` registers the key bindings (key
+  context `MarkdownEditor`). Call it at startup after `gpui_component::init`;
+  `MarkdownEditor::new` calls it if you forget.
+- `is_dirty` follows the undo history: undoing back to the saved state makes
+  the editor clean again.
+- `Command::SelectAll` selects the whole document; Ctrl+A selects the block
+  first.
+- Ctrl+click (Cmd+click on macOS) on a link, wiki link or tag emits
+  `LinkClicked`, `WikiLinkClicked` or `TagClicked`; a plain click places the
+  caret.
+- `Command::InsertRule` no longer adds a blank line after the rule to the
+  Markdown: an empty paragraph at the start or end of the document is not
+  written.
+- Removed the hidden preview switches `__set_rich_preview` and
+  `__set_rich_selection` (`__set_selection` stays hidden, for screenshots).
+
+What works:
+
+- Typing with the Markdown input rules (headings, lists, checklists, quotes,
+  code blocks, rules, bold, italic, strike, code, highlight); Backspace right
+  after a rule undoes it.
+- Enter, Shift+Enter, Tab and Shift+Tab in paragraphs, lists, checklists,
+  code blocks and table cells.
+- The shortcuts of the plan: marks, Ctrl+K link with the clipboard URL,
+  checklist, headings, checkbox, moving blocks, undo and redo.
+- Caret movement by characters, words, visual lines, pages and the document,
+  with Shift to select across blocks; a blinking caret kept in view.
+- Mouse selection by click, Shift+click, drag with scrolling at the edges,
+  double and triple click; checkbox clicks; node selection of rules and images.
+- IME composition with underlined marked text and the candidate window at the
+  caret; stale ranges are clamped.
+- Copy and cut as Markdown text; paste of Markdown, plain text, and URLs over a
+  selection as links.
+- All commands except `FoldHeading` and `OpenFind`; `highlight` is painted,
+  `scroll_to` scrolls.
+- Fixed: Ctrl+Alt+2 on a level-1 heading made it a paragraph instead of a
+  level-2 heading.
+
+Markdown output:
+
+- An empty paragraph between two blocks is written as `&#32;` on its own
+  line and read back as an empty paragraph, because Markdown has no empty
+  paragraph. Files show this after pressing Enter twice between blocks.
+- Bold, italic and strike leave whitespace at the edges of the selection
+  unmarked, so the result reads back with the same marks.
+- Copying part of one block copies inline Markdown without the block marker;
+  spaces at the edges of copied text stay plain.
 
 ## [0.0.2]
 
