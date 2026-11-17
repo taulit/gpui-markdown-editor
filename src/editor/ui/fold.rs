@@ -1,9 +1,12 @@
 //! Folding: a top-level heading hides the blocks after it up to the next
 //! heading of the same or a higher level.
 //!
-//! Hidden blocks are not laid out and cannot hold the caret: movement
-//! skips them and a caret inside a section being folded moves to the end
-//! of its heading. The find bar unfolds the section of its current match.
+//! Hidden blocks are not laid out and cannot hold the caret or a node
+//! selection: movement skips them and a selection inside a section being
+//! folded moves to the end of its heading. An edit that would hide visible
+//! content (Enter at the end of a folded heading, a block dropped after a
+//! folded section, a heading turned into content of one) unfolds the
+//! section instead. The find bar unfolds the section of its current match.
 //! The state is [`DocMeta::folded_headings`] (ordinals among all headings
 //! of the document); a fold made in the editor emits
 //! [`EditorEvent::MetaChanged`].
@@ -153,17 +156,28 @@ impl MarkdownEditor {
         let Some(ix) = self.top_index(block) else {
             return;
         };
-        let blocks = self.state.doc.blocks();
-        if !blocks
+        if !self
+            .state
+            .doc
+            .blocks()
             .get(ix)
             .is_some_and(|b| self.hidden.contains(&b.id()))
         {
             return;
         }
-        // Every folded heading above whose section reaches `ix`.
+        for id in self.folds_over(ix) {
+            self.folded.remove(&id);
+        }
+        self.apply_folds(cx, true);
+    }
+
+    /// Every folded heading above top-level block `ix` whose section
+    /// reaches it.
+    fn folds_over(&self, ix: usize) -> Vec<BlockId> {
+        let blocks = self.state.doc.blocks();
         let mut open = Vec::new();
         let mut min_level = u8::MAX;
-        for b in blocks[..ix].iter().rev() {
+        for b in blocks[..ix.min(blocks.len())].iter().rev() {
             if let Some(l) = level(b)
                 && l < min_level
             {
@@ -173,10 +187,7 @@ impl MarkdownEditor {
                 }
             }
         }
-        for id in open {
-            self.folded.remove(&id);
-        }
-        self.apply_folds(cx, true);
+        open
     }
 
     /// Recomputes the hidden blocks after `folded` changed and, if `store`,
@@ -198,8 +209,15 @@ impl MarkdownEditor {
         cx.notify();
     }
 
-    /// After a structural edit: drops folds of headings that are gone or
-    /// no longer headings, and updates the hidden blocks and ordinals.
+    /// After an edit: drops folds of headings that are gone or no longer
+    /// headings, and updates the hidden blocks and ordinals.
+    ///
+    /// An edit never moves visible content into a fold: a section that
+    /// would now hide a block that was visible before the edit (or is new)
+    /// unfolds. That covers Enter at the end of a folded heading (the new
+    /// paragraph belongs to its section), a block dropped after a folded
+    /// section, and a heading that ended a folded section turned into
+    /// content of it.
     pub(in crate::editor) fn sync_folds(&mut self, cx: &mut Context<Self>) {
         if self.folded.is_empty() {
             return;
@@ -210,6 +228,16 @@ impl MarkdownEditor {
                 .iter()
                 .any(|b| b.id() == *id && level(b).is_some())
         });
+        let hidden = hidden_blocks(doc, &self.folded);
+        let mut open = Vec::new();
+        for (ix, b) in doc.blocks().iter().enumerate() {
+            if hidden.contains(&b.id()) && !self.hidden.contains(&b.id()) {
+                open.extend(self.folds_over(ix));
+            }
+        }
+        for id in open {
+            self.folded.remove(&id);
+        }
         self.apply_folds(cx, true);
     }
 
@@ -220,26 +248,40 @@ impl MarkdownEditor {
         self.apply_folds(cx, false);
     }
 
-    /// Moves a selection end that is inside a folded section out of it:
+    /// Moves a selection that is inside a folded section out of it:
     /// forward past the section when `forward`, else to the end of its
-    /// heading. The anchor of a range is collapsed onto the head.
+    /// heading. Covers carets, ranges (the anchor of a range is collapsed
+    /// onto the head), selected node blocks and cell rectangles.
     pub(in crate::editor) fn leave_hidden(&mut self, forward_default: bool) {
         if self.hidden.is_empty() {
             return;
         }
-        let Some(head) = self.state.selection.head() else {
+        let Some(head) = probe(&self.state.selection) else {
             return;
         };
+        let is_hidden = |this: &Self, block: BlockId| {
+            this.top_index(block).is_some_and(|ix| {
+                this.state
+                    .doc
+                    .blocks()
+                    .get(ix)
+                    .is_some_and(|b| this.hidden.contains(&b.id()))
+            })
+        };
+        if !is_hidden(self, head.block) {
+            // A range whose anchor was folded away keeps only its head.
+            if let Selection::Text { anchor, head } = self.state.selection
+                && anchor.block != head.block
+                && is_hidden(self, anchor.block)
+            {
+                self.state.set_selection(Selection::caret(head));
+            }
+            return;
+        }
         let Some(ix) = self.top_index(head.block) else {
             return;
         };
         let blocks = self.state.doc.blocks();
-        if !blocks
-            .get(ix)
-            .is_some_and(|b| self.hidden.contains(&b.id()))
-        {
-            return;
-        }
         let forward = match self.last_head {
             Some(last) => self.state.cmp_pos(last, head).is_lt(),
             None => forward_default,
@@ -256,26 +298,50 @@ impl MarkdownEditor {
             .map(|i| blocks[ix + i].id());
         let target = if forward {
             after
-                .and_then(|id| self.first_text_in(id))
-                .or_else(|| heading.map(|h| self.state.end_of(h)))
+                .and_then(|id| self.first_stop_in(id))
+                .or_else(|| heading.map(|h| Selection::caret(self.state.end_of(h))))
         } else {
-            heading.map(|h| self.state.end_of(h))
+            heading.map(|h| Selection::caret(self.state.end_of(h)))
         };
         if let Some(target) = target {
-            self.state.set_selection(Selection::caret(target));
+            self.state.set_selection(target);
         }
     }
 
-    /// The first caret position in top-level block `id` or after it.
-    fn first_text_in(&self, id: BlockId) -> Option<TextPos> {
+    /// The selection at the start of top-level block `id`: a caret at its
+    /// first text, or the block itself if it has none (a rule, image or
+    /// table without cells).
+    fn first_stop_in(&self, id: BlockId) -> Option<Selection> {
         let loc = self.state.locate(id)?;
-        let stop = order::stop_at(&self.state.doc, &loc)
+        let doc = &self.state.doc;
+        let stop = order::stop_at(doc, &loc)?;
+        let node = !stop.text
+            && doc
+                .block(id)
+                .is_some_and(|b| !order::holds_children(b.kind()) && b.children().is_empty());
+        if node {
+            return Some(Selection::Node(stop.id));
+        }
+        let stop = Some(stop)
             .filter(|s| s.text)
-            .or_else(|| order::next_text(&self.state.doc, &loc))?;
-        Some(TextPos {
+            .or_else(|| order::next_text(doc, &loc))?;
+        Some(Selection::caret(TextPos {
             block: stop.id,
             offset: 0,
-        })
+        }))
+    }
+}
+
+/// The position that tells where a selection is, for folding: the caret,
+/// the head cell or the selected block. `None` for the whole document.
+pub(in crate::editor) fn probe(selection: &Selection) -> Option<TextPos> {
+    match selection {
+        Selection::Text { head, .. } => Some(*head),
+        Selection::Cells { head: block, .. } | Selection::Node(block) => Some(TextPos {
+            block: *block,
+            offset: 0,
+        }),
+        Selection::All => None,
     }
 }
 

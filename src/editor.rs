@@ -440,7 +440,7 @@ impl MarkdownEditor {
             self.leave_hidden(true);
             changes.selection |= self.state.take_changes().selection;
         }
-        self.last_head = self.state.selection.head();
+        self.last_head = ui::fold::probe(&self.state.selection);
         if !keep_goal {
             self.goal_x = None;
         }
