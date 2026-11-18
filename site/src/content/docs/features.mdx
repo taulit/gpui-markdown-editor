@@ -1,0 +1,81 @@
+---
+title: Features
+description: What gpui-markdown-editor can do. Covers the lossless CommonMark and GFM round-trip, Markdown input rules, tables, checklists, images, attachments, the format bar and slash menu, extensions, and accessibility.
+---
+
+import Shot from '../../components/Shot.astro';
+import formatLight from '../../assets/e3-formatbar-styles-light.png';
+import formatDark from '../../assets/e3-formatbar-styles-dark.png';
+import imageLight from '../../assets/e3-image-light.png';
+import imageDark from '../../assets/e3-image-dark.png';
+import linkLight from '../../assets/e3-link-bubble-light.png';
+import linkDark from '../../assets/e3-link-bubble-dark.png';
+import findLight from '../../assets/e3-find-light.png';
+import findDark from '../../assets/e3-find-dark.png';
+
+## Lossless Markdown round-trip
+
+The editor reads and writes CommonMark with GFM tables, task lists and strikethrough.
+
+- **Unedited files stay byte-identical.** Opening and saving without edits gives the same bytes, including line endings, trailing whitespace, a BOM and front matter. This is tested on the 1354 CommonMark and GFM spec examples and a corpus of real notes.
+- **Unknown syntax is kept.** Constructs the editor does not model, such as HTML blocks, footnotes, math and definition lists, become raw blocks or spans. They are shown as source and written back unchanged.
+- **Only edited blocks are normalised.** Their neighbours are left alone. An edited block is written in one consistent style: ATX headings, `-` bullets, `- [ ]` tasks, `**bold**`, fenced code and padded tables.
+- **Undo is exact.** Undoing every edit gives back the loaded text byte for byte, and `is_dirty()` follows the undo history.
+
+## Markdown input rules
+
+Type Markdown and it turns into formatting:
+
+| Type | Result |
+|---|---|
+| `# ` … `###### ` | Heading 1 to 6 |
+| `- ` or `* `, `1. ` | Bullet list, numbered list |
+| `[] ` or `- [ ] ` | Checklist item |
+| `> `, ` ``` `, `---` | Quote, code block, horizontal rule |
+| `**x**`, `*x*`, `~~x~~`, `` `x` ``, `==x==` | Bold, italic, strikethrough, code, highlight |
+
+Backspace right after a rule undoes it. Set `EditorOptions::input_rules = false` to keep typed Markdown as literal text. The format bar, shortcuts and commands still work.
+
+## Tables
+
+GFM tables are edited cell by cell. Selection is a rectangle, and there are row and column menus (`Shift+F10`) and keys for inserting, moving and deleting rows and columns. Columns can be resized. Widths are stored in `DocMeta`, outside the Markdown, so the file stays plain GFM.
+
+## Checklists
+
+Task items are drawn as checkboxes and toggled with a click or `Ctrl+Enter`. Commands can tick or untick every item or move checked items to the bottom. The headless `Document` lists open tasks without a window.
+
+## Images and attachments
+
+<Shot light={imageLight} dark={imageDark} alt="Two images in a note, one selected with resize handles, and a placeholder for a missing photo" caption="Images load off the UI thread and can be resized" />
+
+Images (`![alt](src)`, or `![alt|400](src)` with a width) load asynchronously when they come near the viewport. Decoding happens off the UI thread. `resolve_src` maps relative paths to files. `on_image` stores pasted or dropped image data and returns the source to insert. A paragraph that is only a link to a local non-image file is drawn as an attachment row with the file size.
+
+## Built-in UI
+
+<div class="shot-grid">
+  <Shot light={formatLight} dark={formatDark} alt="The format bar with its style popover: title, heading, subheading, text, monospace" caption="Format bar with styles" />
+  <Shot light={linkLight} dark={linkDark} alt="A link bubble with Open, Edit and Remove" caption="Link popover" />
+  <Shot light={findLight} dark={findDark} alt="The find bar with highlighted matches" caption="Find bar" />
+</div>
+
+The format bar, slash menu, link popover, find bar and completions for `[[wiki links]]` and `#tags` can each be switched off with `UiParts`. You can replace any of them with your own UI driven by `Command`s.
+
+## Extensions
+
+An `Extension` adds inline syntax. It parses it from text, writes it back, styles it, adds an input rule, reports clicks and adds slash menu entries. Wiki links (`[[Note|Alias]]`), tags (`#tag`) and highlights (`==text==`) ship with the crate. Extensions add marks only. They cannot add their own inline nodes or block renderers yet.
+
+## More
+
+- **Folding and block drag:** fold a heading's section with `Ctrl+.` or drag blocks by their handle. Folds are kept in `DocMeta`.
+- **Headless model:** `Document` parses, inspects (outline, tasks, tags) and rewrites Markdown without a window.
+- **HTML to Markdown:** `markdown::html_to_markdown` converts rich text, for hosts that receive HTML.
+- **IME and keyboard:** input methods with preedit, word-wise undo, and every popup works with the keyboard. All bindings live in the key context `MarkdownEditor` and can be rebound.
+- **Accessibility:** document, blocks and popups are AccessKit nodes with roles.
+- **Motion:** popups fade in and checkboxes spring. Both follow GPUI's reduced-motion setting.
+
+## Known limits in 0.1
+
+- GPUI exposes no HTML clipboard format, so paste never sees rich text.
+- The caret and selected text are not yet reported to screen readers.
+- Folding and block drag work on top-level blocks only.
+- Input methods are tested in simulation. Dead keys, Compose and ibus have not been checked on every desktop.

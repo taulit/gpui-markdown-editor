@@ -1,0 +1,131 @@
+---
+title: Quickstart
+description: Add gpui-markdown-editor to a GPUI app in a few minutes. Shows the Cargo dependencies, the matching gpui and gpui-component versions, and a minimal window with a Markdown editor.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Requirements
+
+- Rust 1.95 or newer, edition 2024.
+- GPUI from the `gpui-pre` crate and [gpui-component](https://github.com/longbridge/gpui-component). The editor pins exact versions, and your app must use the same ones:
+
+| Crate | Version |
+|---|---|
+| `gpui` (package `gpui-pre`) | `=0.3.12` |
+| `gpui_platform` (package `gpui-pre-platform`) | `=0.3.12` |
+| `gpui-component` | `=0.10.0` |
+
+- On Linux: the usual GPUI system packages (Wayland/X11, xkbcommon, fontconfig, Vulkan). See [gpui-component's install script](https://github.com/longbridge/gpui-component).
+
+## Add the dependency
+
+```toml title="Cargo.toml"
+[dependencies]
+gpui-markdown-editor = "0.1"
+gpui = { package = "gpui-pre", version = "=0.3.12" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit", "x11", "wayland"] }
+gpui-component = "=0.10.0"
+```
+
+<Aside type="caution" title="Not on crates.io yet?">
+Until 0.1.0 is on crates.io, depend on the git tag instead:
+`gpui-markdown-editor = { git = "https://github.com/taulit/gpui-markdown-editor", tag = "v0.1.0" }`
+</Aside>
+
+Feature flags: `ui` (format bar, slash menu, find bar, link popover) and `paste-html` (HTML clipboard to Markdown) are on by default. `serde` adds `Serialize`/`Deserialize` for `DocMeta`.
+
+## A minimal window
+
+<Steps>
+
+1. Initialise gpui-component and the editor once at startup. `init` registers the key bindings. If you bind your own keys after it, yours win.
+
+2. Create a `MarkdownEditor` entity with `EditorOptions`, load Markdown with `set_markdown` and render the entity as a child.
+
+3. Subscribe to `EditorEvent::Changed`. Save `markdown()` there, debounced, then call `mark_saved`.
+
+</Steps>
+
+```rust title="src/main.rs"
+use gpui::{
+    App, AppContext as _, Bounds, Context, Entity, Focusable as _, IntoElement, ParentElement as _,
+    Render, Styled as _, Window, WindowBounds, WindowOptions, div, px, size,
+};
+use gpui_component::Root;
+use gpui_markdown_editor::extensions::{Highlight, Tag, WikiLink};
+use gpui_markdown_editor::{EditorEvent, EditorOptions, MarkdownEditor};
+
+struct Note {
+    editor: Entity<MarkdownEditor>,
+}
+
+impl Note {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let options = EditorOptions {
+            first_line_is_title: true,
+            extensions: vec![Box::new(WikiLink), Box::new(Tag), Box::new(Highlight)],
+            ..Default::default()
+        };
+        let editor = cx.new(|cx| MarkdownEditor::new(window, cx, options));
+        editor.update(cx, |editor, cx| {
+            editor.set_markdown("# Weekend trip\n\n- [ ] Check the tires\n", cx)
+        });
+        editor.focus_handle(cx).focus(window, cx);
+
+        cx.subscribe(&editor, |_, editor, event: &EditorEvent, cx| match event {
+            EditorEvent::Changed => {
+                let markdown = editor.read(cx).markdown();
+                // Write `markdown` to disk (debounced), then:
+                // editor.update(cx, |editor, _| editor.mark_saved());
+                let _ = markdown;
+            }
+            EditorEvent::LinkClicked(url) => cx.open_url(url),
+            _ => {}
+        })
+        .detach();
+
+        Self { editor }
+    }
+}
+
+impl Render for Note {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child(self.editor.clone())
+    }
+}
+
+fn main() {
+    gpui_platform::application().run(|cx: &mut App| {
+        gpui_component::init(cx);
+        gpui_markdown_editor::init(cx);
+
+        let bounds = Bounds::centered(None, size(px(900.), px(700.)), cx);
+        let options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            ..Default::default()
+        };
+        cx.open_window(options, |window, cx| {
+            let note = cx.new(|cx| Note::new(window, cx));
+            // gpui-component draws menus and tooltips in a `Root` view.
+            cx.new(|cx| Root::new(note, window, cx))
+        })
+        .expect("failed to open the window");
+        cx.activate(true);
+    });
+}
+```
+
+## Run the examples
+
+The repository has three complete programs:
+
+```sh
+git clone https://github.com/taulit/gpui-markdown-editor
+cd gpui-markdown-editor
+cargo run --example basic     # one editor and a word count
+cargo run --example notes     # every feature: images, tables, completions, find
+cargo run --example headless  # the document model without a window
+```
+
+Next: [Features](/gpui-markdown-editor/features/) · [API overview](/gpui-markdown-editor/api/) · [Theming](/gpui-markdown-editor/theming/)

@@ -1,0 +1,37 @@
+/* Accent taken from the editor's own caret and checkbox blue. */
+:root {
+  --sl-color-accent-low: #0f2547;
+  --sl-color-accent: #2f7cf6;
+  --sl-color-accent-high: #c6dbff;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #d6e6ff;
+  --sl-color-accent: #1f66d9;
+  --sl-color-accent-high: #0d3270;
+}
+
+/* Screenshots: a quiet frame so white editor shots don't melt into the page. */
+.shot {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+  box-shadow: var(--sl-shadow-md);
+}
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+.shot-grid figure {
+  margin: 0;
+}
+.shot-grid figcaption {
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-3);
+  margin-top: 0.4rem;
+}
+.hero-gif {
+  width: 100%;
+  max-width: 30rem;
+  height: auto;
+  background: #fff;
+}

@@ -6,10 +6,11 @@ rust-version = "1.95"
 license = "Apache-2.0"
 description = "WYSIWYG Markdown editor component for GPUI (Zed's UI framework) – lossless round-trip, tables, checklists, images."
 repository = "https://github.com/taulit/gpui-markdown-editor"
+homepage = "https://taulit.github.io/gpui-markdown-editor/"
 readme = "README.md"
 keywords = ["gpui", "markdown", "editor", "wysiwyg", "rich-text"]
 categories = ["gui", "text-editors"]
-exclude = ["docs/design/", ".github/", "tests/corpus/"]
+exclude = ["docs/design/", ".github/", "tests/corpus/", "site/", "marketing/"]
 # Publishing to crates.io is a manual, user-approved step (see docs/release-checklist.md).
 publish = false
 

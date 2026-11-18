@@ -269,6 +269,67 @@ fn readme_typing_frames() {
     }
 }
 
+/// Frames for the showcase animation on the docs site and in the launch
+/// post: input rules, a ticked checklist, inline marks and a table from the
+/// slash menu, written to `target/showcase-typing/` (combined into
+/// `docs/screenshots/showcase.gif` by `scripts/showcase-gif.sh`).
+#[test]
+#[ignore = "needs a GPU and writes target/showcase-typing, run scripts/showcase-gif.sh"]
+fn showcase_typing_frames() {
+    // Text is typed character by character; `[key]` items are pressed as is.
+    let script: &[&str] = &[
+        "Weekend trip\n## Packing\n[] Warm jacket\nHiking boots",
+        "[ctrl-enter]",
+        "\n\nLeave **Friday** at 8, bring the ==charger==.\n/tab",
+        "[enter]",
+        "Day",
+        "[tab]",
+        "Plan",
+        "[tab]",
+        "Km",
+        "[tab]",
+        "Sat",
+        "[tab]",
+        "Hike to the lake",
+        "[tab]",
+        "12",
+    ];
+    let mut keys: Vec<String> = Vec::new();
+    for part in script {
+        if let Some(key) = part.strip_prefix('[').and_then(|k| k.strip_suffix(']')) {
+            keys.push(key.to_string());
+            continue;
+        }
+        keys.extend(part.chars().map(|ch| match ch {
+            '\n' => "enter".to_string(),
+            ' ' => "space".to_string(),
+            ch => ch.to_string(),
+        }));
+    }
+    // The last frame repeats so the loop pauses on the result.
+    let ends = (0..=keys.len())
+        .step_by(2)
+        .chain(std::iter::repeat_n(keys.len(), 12));
+    for (frame, end) in ends.enumerate() {
+        // Relative to docs/screenshots, where `capture_with_keys` writes.
+        let name = format!("../../target/showcase-typing/frame-{frame:03}");
+        // The headless renderer sometimes fails after many windows; the
+        // script reruns the test, which skips the frames already written.
+        if Path::new(&format!("target/showcase-typing/frame-{frame:03}.png")).exists() {
+            continue;
+        }
+        capture_with_keys(
+            &name,
+            ThemeMode::Light,
+            "",
+            |_, _| {},
+            &[],
+            &keys[..end],
+            None,
+        );
+    }
+}
+
 const E3_TABLE: &str = "\
 Trip budget
 
