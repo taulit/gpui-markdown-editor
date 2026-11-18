@@ -2,7 +2,7 @@
 
 WYSIWYG Markdown editor component for GPUI (Zed's UI framework) – lossless round-trip, tables, checklists, images.
 
-![Typing with Markdown input rules: a heading, a checklist and bold text form as you type](docs/screenshots/typing.gif)
+![Typing in the editor: a heading, a checklist with a ticked item, bold and highlighted text, and a table from the slash menu](docs/screenshots/showcase.gif)
 
 <p>
   <img src="docs/screenshots/e2-note-light.png" alt="A note in the editor, light theme" width="49%">
@@ -10,6 +10,8 @@ WYSIWYG Markdown editor component for GPUI (Zed's UI framework) – lossless rou
 </p>
 
 `gpui-markdown-editor` shows Markdown as formatted text while you type, like Apple Notes or Notion: no visible `**` or `#`, input rules turn `# ` into a heading and `[] ` into a checkbox. Files round-trip losslessly: what you load is saved byte for byte unless you edit it, and edited blocks are written in one consistent style. It is built for [gpui-component](https://github.com/longbridge/gpui-component) and uses its theme and widgets.
+
+Documentation, quickstart and benchmarks: **https://taulit.github.io/gpui-markdown-editor/**
 
 ## Features
 
