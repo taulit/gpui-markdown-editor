@@ -1,0 +1,48 @@
+---
+title: Benchmarks
+description: Measured performance of gpui-markdown-editor. A keystroke plus its frame takes 1.5 ms in a 10,000-block document, and opening a 1 MB Markdown file takes 31 ms. Includes the method and how to reproduce it with criterion.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Two budgets guided the design: **a keystroke with its frame under 4 ms** in a 10,000-block document, and **opening 1 MB under 50 ms**. Both are met.
+
+## Results
+
+Release build, Intel Core i5-11400F (6 cores), 16 GB RAM, Linux 6.18, rustc 1.99. Measured 2026-11-17 with [criterion](https://github.com/bheisler/criterion.rs).
+
+| Benchmark | Budget | Median |
+|---|---|---|
+| Keystroke + frame, 10,000 blocks | < 4 ms | **1.5 ms** |
+| Open 1 MB (`set_markdown` + first frame) | < 50 ms | **31 ms** |
+| First layout of 1 MB after `set_markdown` | – | 0.49 ms |
+| Keystroke in the editing core, 10,000 blocks | – | 1.4 µs |
+| Find over 1 MB (about 2,300 matches) | – | 2.2 ms |
+| Parse 10 KB / 1 MB | – | 0.25 ms / 37 ms |
+| Serialize 1 MB, unchanged | – | 3.1 ms |
+| Serialize 1 MB, every block rewritten | – | 41 ms |
+| `html_to_markdown`, 100 KB | – | 5.9 ms |
+
+<Aside type="note" title="Honest caveats">
+The machine was shared with other work during the run (load average 7 to 11). Under heavier load (10 to 17) the keystroke went up to 4.4 ms and opening 1 MB up to 66 ms. GPU rasterisation, image decoding and window-system input latency are **not** included: the benchmarks run in GPUI's headless test window, which records the scene but does not rasterise it.
+</Aside>
+
+## What is measured
+
+- **Documents** are generated: sections with a heading, a paragraph with marks, links, wiki links and tags, a nested list, a checklist, a quote, a code block and a table, repeated to the size. The 10,000-block document alternates headings, paragraphs and three-item lists.
+- **Keystroke + frame:** one character typed in the middle through GPUI's real input path (key dispatch, input handler, editing core, input rules, history, events), then one frame with the platform text system, including font shaping.
+- **Open:** parsing, building the editing state and the first frame in an 800×600 window. This includes freeing the previous 1 MB document. Parsing dominates, and about 15 ms of it is pulldown-cmark itself.
+
+## Why it is fast
+
+Unedited blocks keep their source text, so saving copies bytes instead of re-serialising. Layout is per block, and only the changed block and the visible ones are laid out on a keystroke. The editing core finds blocks through a path index, so the edit itself takes about 1.4 µs even at 10,000 blocks. Nearly all of a keystroke's cost is the frame.
+
+## Reproduce
+
+```sh
+cargo bench --bench markdown        # parser, serializer, HTML, editing core
+cargo bench --bench editor          # keystroke + frame, open, find
+cargo bench --bench editor -- open  # one benchmark by name
+```
+
+The full table, with the numbers under load, is in [docs/performance.md](https://github.com/taulit/gpui-markdown-editor/blob/main/docs/performance.md).

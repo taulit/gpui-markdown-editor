@@ -1,0 +1,44 @@
+---
+title: FAQ
+description: Common questions about gpui-markdown-editor. Covers how it differs from gpui-component's editor, Zed compatibility, platforms, the Markdown flavour, file changes on save, custom syntax, versions and the licence.
+---
+
+### How is this different from gpui-component's `Input` or `TextView`?
+
+gpui-component's code editor edits the Markdown **source** as plain text with syntax highlighting. Its `TextView::markdown` **displays** rendered Markdown but cannot edit it. This crate edits the **rendered** text and saves Markdown. Use the code editor to edit Markdown as text, `TextView` to show it, and this crate to let people write formatted notes that stay Markdown on disk.
+
+### Can I use it inside Zed?
+
+No. Zed extensions cannot add GPUI views. This is a component for your own GPUI application. It uses the `gpui-pre` crates from crates.io and gpui-component, not Zed's in-tree GPUI.
+
+### Which platforms does it run on?
+
+It runs wherever GPUI runs. Development and manual testing happen on Linux (Wayland and X11). CI checks that the crate builds on macOS and Windows.
+
+### Which Markdown does it read and write?
+
+CommonMark plus the GFM extensions for tables, task lists and strikethrough. It also supports `==highlight==`, `[[wiki links]]` and `#tags` through the bundled extensions, and `<u>underline</u>`. Anything else, such as HTML blocks, footnotes or math, is kept as raw text and written back unchanged.
+
+### Will it reformat my files?
+
+Not unless you edit them. A file that is opened and saved without edits is byte-identical. When you edit a block, only that block is rewritten in a consistent style, and its neighbours keep their original bytes. One exception since 0.1.0: empty paragraphs are not written, because Markdown has no such thing.
+
+### Can I add my own syntax?
+
+Yes, for inline syntax. An `Extension` can parse, serialise, style, autocomplete and handle clicks on marks like `@mentions`. The crate guide on docs.rs has a complete example. Custom block types and inline nodes are not supported yet.
+
+### Can I replace the built-in toolbar?
+
+Yes. Turn parts off with `EditorOptions::ui` (`UiParts`) and drive the editor with `Command`s from your own UI.
+
+### Why are gpui and gpui-component pinned to exact versions?
+
+gpui-component pins an exact `gpui-pre` snapshot, and GPUI types must be the same in your app and in the editor. Upgrades of this crate will move all three together.
+
+### Is it production-ready?
+
+0.1.0 is the first complete release, and [Sheaf](https://taulit.github.io/sheaf/) is built on it. The [known limits](/gpui-markdown-editor/features/#known-limits-in-01) are documented. IME on every desktop and screen-reader caret reporting still need work. Bug reports are welcome on [GitHub](https://github.com/taulit/gpui-markdown-editor/issues).
+
+### What is the licence?
+
+Apache-2.0, the same as GPUI.

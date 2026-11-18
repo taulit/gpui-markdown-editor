@@ -1,0 +1,84 @@
+---
+title: API overview
+description: The public API of gpui-markdown-editor at a glance. Covers MarkdownEditor, EditorOptions, Command, EditorEvent, EditorStyle, DocMeta, Extension and the headless Document model, with a link to the full reference on docs.rs.
+---
+
+import { LinkCard } from '@astrojs/starlight/components';
+
+<LinkCard
+  title="Full API reference on docs.rs"
+  description="Every type, option and command, plus the crate guide with complete examples."
+  href="https://docs.rs/gpui-markdown-editor"
+/>
+
+The crate has two layers: **`MarkdownEditor`**, the GPUI view, and **`Document`**, a model that needs no window.
+
+## The view
+
+| Item | What it is for |
+|---|---|
+| `MarkdownEditor::new(window, cx, options)` | Creates the editor entity. Render it as a child of your view. |
+| `set_markdown(md, cx)` / `markdown()` | Loads Markdown (clears undo history) and returns the current text. |
+| `is_dirty()` / `mark_saved()` | Unsaved changes, following the undo history. |
+| `command(Command, window, cx)` | Runs anything the toolbar or keys can do. Part of undo. |
+| `find`, `highlight`, `scroll_to`, `word_count` | Search, highlight ranges, scroll and count. |
+| `meta()` / `set_meta(DocMeta, cx)` | Folds and column widths, stored outside the Markdown. |
+| `set_style(EditorStyle, cx)` | Colours and sizes, see [Theming](/gpui-markdown-editor/theming/). |
+| `document()` | Read access to the `Document` being edited. |
+
+## Options
+
+`EditorOptions` is fixed at creation. Always end struct literals with `..Default::default()`.
+
+| Field | Default | Effect |
+|---|---|---|
+| `first_line_is_title` | `false` | Draws the first paragraph as a title (display only). |
+| `max_width` | `Some(700 px)` | Width of the centred content column. |
+| `extensions` | none | Custom inline syntax (`WikiLink`, `Tag`, `Highlight` ship with the crate). |
+| `resolve_src` | none | Maps image and attachment sources to files. |
+| `on_image` | none | Stores pasted or dropped image data, returns the source to insert. |
+| `completions` | none | Suggestions after `[[` and `#`. |
+| `slash_items` | none | Extra entries in the slash menu. |
+| `ui` | all on | Switches the format bar, slash menu, find bar and link popover. |
+| `input_rules` | `true` | Typed Markdown turns into formatting. |
+
+## Commands
+
+```rust
+editor.update(cx, |editor, cx| {
+    editor.command(Command::ToggleMark(Mark::Bold), window, cx);
+    editor.command(Command::SetBlock(BlockKind::Heading(2)), window, cx);
+    editor.command(Command::InsertMarkdown("- [ ] new task\n".into()), window, cx);
+});
+```
+
+Other commands include `ToggleTask`, `Indent`/`Outdent`, `InsertTable`, `InsertImage`, `SetLink`, `MoveBlockUp`/`Down`, `FoldHeading`, `CheckAll`, `MoveCheckedToBottom` and `Undo`/`Redo`.
+
+## Events
+
+`EditorEvent` is emitted through `cx.subscribe`:
+
+- `Changed` after every edit. Debounce it before saving.
+- `SelectionChanged` and `MetaChanged`.
+- `LinkClicked(url)` (on Ctrl/Cmd+click), `WikiLinkClicked`, `TagClicked` and `AttachmentClicked`. These only report. Opening anything is up to your app.
+
+## Headless use
+
+```rust
+use gpui_markdown_editor::extensions::{Tag, WikiLink};
+use gpui_markdown_editor::{BlockKind, Document, Extensions};
+
+let doc = Document::parse_with(markdown, Extensions::new(vec![Box::new(WikiLink), Box::new(Tag)]));
+for block in doc.blocks() {
+    if let BlockKind::Heading(level) = block.kind() {
+        println!("{}{}", "  ".repeat(usize::from(*level) - 1), block.text());
+    }
+}
+assert_eq!(doc.to_markdown(), markdown); // unedited: byte for byte
+```
+
+See `examples/headless.rs` and the `model` module on docs.rs.
+
+## Key bindings
+
+All actions are named `markdown_editor::<Name>` (for example `markdown_editor::ToggleBold`) in the key context `MarkdownEditor`. Bind an action by name after `init` to rebind it. Bind `gpui::NoAction` to remove a default. The full shortcut table is in the [README](https://github.com/taulit/gpui-markdown-editor#shortcuts).

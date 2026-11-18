@@ -1,0 +1,63 @@
+---
+title: Theming with gpui-component
+description: How gpui-markdown-editor takes its colours and fonts from the active gpui-component theme, how to follow light and dark mode, and how to change sizes and colours with EditorStyle.
+---
+
+import Shot from '../../components/Shot.astro';
+import noteLight from '../../assets/e2-note-light.png';
+import noteDark from '../../assets/e2-note-dark.png';
+
+The editor does not have its own theme system. It reads colours and the font from the active [gpui-component](https://github.com/longbridge/gpui-component) theme through `EditorStyle::from_theme`, so it matches the rest of your app.
+
+<Shot light={noteLight} dark={noteDark} alt="The same note in the light and dark gpui-component theme" caption="The default light and dark gpui-component themes. Switch this site's theme to see the other one." />
+
+## What comes from the theme
+
+`EditorStyle::from_theme(cx)` takes the font family, the foreground and muted colours, and the primary colour (caret, links, checkboxes) from `cx.theme()`. It derives the rest from these. Text size (15.5 px), line height (1.6) and padding are the editor's defaults.
+
+## Following light and dark mode
+
+`EditorStyle` is a plain value, and the editor does not watch the theme by itself. When your app changes the theme, build a new style and set it again:
+
+```rust
+use gpui_component::{Theme, ThemeMode};
+use gpui_markdown_editor::EditorStyle;
+
+// Switch gpui-component's theme, e.g. from a menu or the system appearance …
+Theme::change(ThemeMode::Dark, Some(window), cx);
+// … or: Theme::sync_system_appearance(Some(window), cx);
+
+// … and restyle the editor.
+editor.update(cx, |editor, cx| editor.set_style(EditorStyle::from_theme(cx), cx));
+```
+
+To do it automatically, observe the `Theme` global in the view that owns the editor:
+
+```rust
+cx.observe_global::<Theme>(|this: &mut Note, cx| {
+    let style = EditorStyle::from_theme(cx);
+    this.editor.update(cx, |editor, cx| editor.set_style(style, cx));
+})
+.detach();
+```
+
+## Changing sizes and colours
+
+Start from the theme and override the fields you care about:
+
+```rust
+let mut style = EditorStyle::from_theme(cx);
+style.text_size = px(17.);
+style.link_color = gpui::blue();
+editor.update(cx, |editor, cx| editor.set_style(style, cx));
+```
+
+`EditorStyle` is `#[non_exhaustive]`, so build it with `from_theme` and then change fields, rather than writing a struct literal. All fields are documented on [docs.rs](https://docs.rs/gpui-markdown-editor/latest/gpui_markdown_editor/struct.EditorStyle.html). Sizes are logical pixels, and line heights are multiples of the font size.
+
+## Custom marks
+
+Extensions style their own marks through `Extension::mark_style`, with `MarkColor` values (`Link`, `Muted`, …) that follow the editor style. Custom syntax therefore changes colour with the theme too.
+
+## Motion
+
+Popups fade and slide in over 250 ms, and a pressed checkbox springs. With `App::set_reduce_motion(true)` (pass on the desktop's reduced-motion setting), both show their end state at once.
