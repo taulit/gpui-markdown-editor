@@ -26,7 +26,11 @@ Read by other sessions. Keep terse.
 
 - `v0.1.0` (branch `phase/e5-release-0.1.0`): first complete release. Against `v0.0.4`: new
   `EditorOptions::input_rules` (breaks struct literals without `..Default::default()`), empty paragraphs are no
-  longer written (`&#32;` is gone), popup and checkbox motion, benchmarks, crate guide. Prefer this tag.
+  longer written (`&#32;` is gone), popup and checkbox motion, benchmarks, crate guide.
+
+- `v0.2.0` (branch `feat/ui-translation`): the built-in UI is translated. New `EditorOptions::strings`
+  (`EditorStrings`: `from_env`, `for_locale`, `set`, `translate`; breaks struct literals without
+  `..Default::default()`), `MarkdownEditor::set_strings`. Ten languages built in. Prefer this tag.
 
 ## Done
 

@@ -24,6 +24,7 @@ use super::super::keys::{
 use super::{MARGIN, Palette, appear, overlay, panel, tool_button};
 use crate::edit::Selection;
 use crate::model::{TextPos, TextRange};
+use crate::strings::EditorStrings;
 
 /// Width of the bar.
 const WIDTH: Pixels = px(380.);
@@ -47,12 +48,14 @@ impl FindBar {
     }
 
     /// "3 of 12", "No results" or nothing for an empty query.
-    fn count_label(&self, query: &str) -> SharedString {
+    fn count_label(&self, query: &str, strings: &EditorStrings) -> SharedString {
         match (self.current, self.matches.len()) {
             _ if query.is_empty() => SharedString::default(),
-            (_, 0) => "No results".into(),
-            (Some(i), n) => format!("{} of {n}", i + 1).into(),
-            (None, n) => format!("{n} found").into(),
+            (_, 0) => strings.get("find.no_results"),
+            (Some(i), n) => {
+                strings.format("find.position", &[("current", &(i + 1)), ("total", &n)])
+            }
+            (None, n) => strings.format("find.found", &[("count", &n)]),
         }
     }
 }
@@ -74,9 +77,10 @@ impl MarkdownEditor {
             _ => None,
         };
         if self.find.is_none() {
+            let placeholder = self.tr("find.placeholder");
             let last = self.last_query.clone();
             let input = cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder("Find");
+                let mut state = InputState::new(window, cx).placeholder(placeholder);
                 state.set_value(last, window, cx);
                 state
             });
@@ -249,7 +253,7 @@ impl MarkdownEditor {
         let find = self.find.as_ref()?;
         let palette = Palette::new(cx);
         let query = find.input.read(cx).value();
-        let label = find.count_label(&query);
+        let label = find.count_label(&query, &self.options.strings);
         let area = self.view.bounds();
         let x = (area.size.width - WIDTH - px(16.)).max(MARGIN);
         let button = |id: &'static str, text: &'static str, active: bool| {
@@ -257,18 +261,18 @@ impl MarkdownEditor {
                 .w(px(30.))
                 .h(px(28.))
                 .text_size(px(13.))
-                .aria_label(match id {
-                    "find-case" => "Match case",
-                    "find-previous" => "Previous match",
-                    "find-next" => "Next match",
-                    _ => "Close",
-                })
+                .aria_label(self.tr(match id {
+                    "find-case" => "find.match_case",
+                    "find-previous" => "find.previous",
+                    "find-next" => "find.next",
+                    _ => "find.close",
+                }))
         };
         let bar = panel(&palette)
             .id("find-bar")
             .key_context(FIND_CONTEXT)
             .role(gpui::Role::Search)
-            .aria_label("Find in document")
+            .aria_label(self.tr("find.bar"))
             .occlude()
             .w(WIDTH)
             .p(px(5.))

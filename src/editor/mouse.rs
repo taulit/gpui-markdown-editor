@@ -50,6 +50,7 @@ impl ViewSource for MarkdownEditor {
     fn view_input(&self) -> ViewInput<'_> {
         ViewInput {
             layout: self.layout_input(),
+            strings: &self.options.strings,
             selection: Some(&self.state.selection),
             selected_cells: match self.state.selection {
                 Selection::Cells { anchor, head } => self

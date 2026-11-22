@@ -16,8 +16,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     App, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Subscription,
-    Task, Window, div,
+    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
+    Subscription, Task, Window, div,
 };
 use gpui_component::scroll::Scrollbar;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -31,6 +31,7 @@ use crate::extension::Extensions;
 use crate::meta::DocMeta;
 use crate::model::{Block, BlockId, BlockKind, Document, TextPos, TextRange};
 use crate::options::EditorOptions;
+use crate::strings::EditorStrings;
 use crate::style::EditorStyle;
 use crate::view::{ColumnWidths, DocumentElement, DocumentView, LayoutInput};
 
@@ -333,6 +334,24 @@ impl MarkdownEditor {
         &self.style
     }
 
+    /// Replaces the texts of the built-in UI, for example after the user
+    /// picked another language. Open menus show the new texts on the next
+    /// frame; the slash menu and the find bar keep theirs until reopened.
+    pub fn set_strings(&mut self, strings: EditorStrings, cx: &mut Context<Self>) {
+        self.options.strings = strings;
+        cx.notify();
+    }
+
+    /// The texts of the built-in UI.
+    pub fn strings(&self) -> &EditorStrings {
+        &self.options.strings
+    }
+
+    /// The UI text of `key`, see [`EditorStrings`].
+    pub(crate) fn tr(&self, key: &str) -> SharedString {
+        self.options.strings.get(key)
+    }
+
     /// Counts the words of the document as displayed, without Markdown
     /// syntax. Words are split by Unicode rules (UAX #29).
     pub fn word_count(&self) -> usize {
@@ -545,7 +564,7 @@ impl Render for MarkdownEditor {
         let document = div()
             .id("markdown-editor")
             .role(gpui::Role::Group)
-            .aria_label("Markdown editor")
+            .aria_label(self.tr("a11y.editor"))
             .key_context({
                 let mut context = gpui::KeyContext::default();
                 context.add(keys::CONTEXT);
@@ -563,7 +582,11 @@ impl Render for MarkdownEditor {
                 }),
             );
         let document = keys::bind_actions(document, cx)
-            .child(DocumentElement::new(self.view.clone(), cx.entity()))
+            .child(DocumentElement::new(
+                self.view.clone(),
+                cx.entity(),
+                self.tr("a11y.document"),
+            ))
             .child(Scrollbar::vertical(&self.view))
             .children(self.render_table_menu(cx));
         div()
