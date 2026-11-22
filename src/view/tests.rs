@@ -67,6 +67,8 @@ fn layout_input<'a>(doc: &'a Document, style: &'a EditorStyle) -> LayoutInput<'a
 
 static NO_HIDDEN: std::sync::LazyLock<std::collections::HashSet<crate::model::BlockId>> =
     std::sync::LazyLock::new(Default::default);
+static NO_STRINGS: std::sync::LazyLock<crate::strings::EditorStrings> =
+    std::sync::LazyLock::new(Default::default);
 static NO_WIDTHS: std::sync::LazyLock<super::ColumnWidths> =
     std::sync::LazyLock::new(Default::default);
 
@@ -77,6 +79,7 @@ fn input<'a>(
 ) -> ViewInput<'a> {
     ViewInput {
         layout: layout_input(doc, style),
+        strings: &NO_STRINGS,
         selection,
         selected_cells: Vec::new(),
         highlights: &[],

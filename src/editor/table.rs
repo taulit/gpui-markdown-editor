@@ -115,49 +115,69 @@ pub(super) enum TableAction {
     Align(Align),
 }
 
-/// The entries of the row or column menu: id, label, action.
+/// The entries of the row or column menu: id, key of the label, action.
 fn menu_entries(row: bool) -> Vec<(&'static str, &'static str, TableAction)> {
     let mut entries = if row {
         vec![
             (
                 "insert-above",
-                "Insert row above",
+                "table.insert_row_above",
                 TableAction::InsertBefore,
             ),
-            ("insert-below", "Insert row below", TableAction::InsertAfter),
-            ("move-up", "Move row up", TableAction::MoveBefore),
-            ("move-down", "Move row down", TableAction::MoveAfter),
+            (
+                "insert-below",
+                "table.insert_row_below",
+                TableAction::InsertAfter,
+            ),
+            ("move-up", "table.move_row_up", TableAction::MoveBefore),
+            ("move-down", "table.move_row_down", TableAction::MoveAfter),
         ]
     } else {
         vec![
             (
                 "insert-left",
-                "Insert column left",
+                "table.insert_column_left",
                 TableAction::InsertBefore,
             ),
             (
                 "insert-right",
-                "Insert column right",
+                "table.insert_column_right",
                 TableAction::InsertAfter,
             ),
-            ("move-left", "Move column left", TableAction::MoveBefore),
-            ("move-right", "Move column right", TableAction::MoveAfter),
-            ("align-left", "Align left", TableAction::Align(Align::Left)),
+            (
+                "move-left",
+                "table.move_column_left",
+                TableAction::MoveBefore,
+            ),
+            (
+                "move-right",
+                "table.move_column_right",
+                TableAction::MoveAfter,
+            ),
+            (
+                "align-left",
+                "table.align_left",
+                TableAction::Align(Align::Left),
+            ),
             (
                 "align-center",
-                "Align center",
+                "table.align_center",
                 TableAction::Align(Align::Center),
             ),
             (
                 "align-right",
-                "Align right",
+                "table.align_right",
                 TableAction::Align(Align::Right),
             ),
         ]
     };
     entries.push((
         "delete",
-        if row { "Delete row" } else { "Delete column" },
+        if row {
+            "table.delete_row"
+        } else {
+            "table.delete_column"
+        },
         TableAction::Delete,
     ));
     entries
@@ -440,6 +460,7 @@ impl MarkdownEditor {
             .into_iter()
             .enumerate()
             .map(|(index, (id, label, action))| {
+                let label = self.tr(label);
                 let color = if action == TableAction::Delete {
                     danger
                 } else {
@@ -450,7 +471,7 @@ impl MarkdownEditor {
                     .id(SharedString::from(id))
                     .debug_selector(|| format!("table-menu-{id}"))
                     .role(gpui::Role::MenuItem)
-                    .aria_label(label)
+                    .aria_label(label.clone())
                     .aria_selected(selected)
                     .aria_position_in_set(index + 1)
                     .aria_size_of_set(count)
@@ -474,7 +495,7 @@ impl MarkdownEditor {
         let panel = div()
             .id("table-menu")
             .role(gpui::Role::Menu)
-            .aria_label(if row { "Row" } else { "Column" })
+            .aria_label(self.tr(if row { "table.row" } else { "table.column" }))
             .occlude()
             .min_w(px(190.))
             .p(px(5.))

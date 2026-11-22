@@ -3,6 +3,20 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
+## [Unreleased]
+
+- The built-in UI is translated: English, German, Spanish, French,
+  Italian, Japanese, Polish, Brazilian Portuguese, Russian and simplified
+  Chinese. New option `EditorOptions::strings: EditorStrings` (default
+  English) with `EditorStrings::from_env`, `for_locale`, `set` (one text
+  by key, like Tiptap's `configure`), `translate` (fill from the host's
+  catalogs), `keys` and `locales`; `MarkdownEditor::set_strings` and
+  `strings` switch and read them at runtime. Slash entries are keyed
+  `slash.<id>`, including those of extensions and `slash_items`, and keep
+  their English label as a keyword. Like `input_rules` in 0.1.0, a struct
+  literal of `EditorOptions` without `..Default::default()` no longer
+  compiles.
+
 ## [0.1.0]
 
 Release preparation (phase E5).

@@ -109,11 +109,36 @@
 //!   `**x**`, the input rules of extensions) into formatting; with `false`
 //!   it stays literal text. The slash menu and the completions are not
 //!   input rules and have their own switches (`ui`, `completions`).
+//! - `strings` holds the texts of the built-in UI, see [Languages](#languages).
 //!
 //! Colors and sizes come from [`EditorStyle`]; [`EditorStyle::from_theme`]
 //! derives them from the active gpui-component theme, and
 //! [`set_style`](MarkdownEditor::set_style) applies a new one (call it
 //! again when the theme changes).
+//!
+//! # Languages
+//!
+//! The built-in UI speaks English, German, Spanish, French, Italian,
+//! Japanese, Polish, Brazilian Portuguese, Russian and simplified Chinese.
+//! [`EditorStrings`] picks a language, and every text can be replaced by
+//! its key, as Tiptap extensions take their texts through `configure`:
+//!
+//! ```
+//! use gpui_markdown_editor::{EditorOptions, EditorStrings};
+//!
+//! let options = EditorOptions {
+//!     // The language of the environment (LANGUAGE, LC_ALL, LC_MESSAGES, LANG).
+//!     strings: EditorStrings::from_env().set("slash.wikilink", "Link a page"),
+//!     ..Default::default()
+//! };
+//! # let _ = options;
+//! ```
+//!
+//! [`EditorStrings::for_locale`] takes a locale such as `de_DE.UTF-8` or
+//! `pt-BR`, [`EditorStrings::translate`] fills every key from the host's own
+//! catalogs, and [`MarkdownEditor::set_strings`] switches at runtime. The
+//! slash entries of extensions and of `slash_items` are named by
+//! `slash.<id>`; their English label stays searchable.
 //!
 //! # Commands
 //!
@@ -403,6 +428,7 @@ pub mod markdown;
 pub mod meta;
 pub mod model;
 pub mod options;
+pub mod strings;
 pub mod style;
 mod view;
 
@@ -419,4 +445,5 @@ pub use options::{
     Completion, CompletionKind, CompletionProvider, EditorOptions, ImageHandler, SlashHandler,
     SlashItem, SrcResolver, UiParts,
 };
+pub use strings::EditorStrings;
 pub use style::EditorStyle;

@@ -4,7 +4,7 @@ use gpui::{
     App, Bounds, CursorStyle, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
     GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId,
     ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    Point, ScrollEvent, Style, Window, px, relative,
+    Point, ScrollEvent, SharedString, Style, Window, px, relative,
 };
 
 use super::paint::Frame;
@@ -16,11 +16,17 @@ use super::{Affordance, DocumentView, ViewInput, ViewSource};
 pub(crate) struct DocumentElement<T: ViewSource> {
     view: DocumentView,
     source: Entity<T>,
+    /// The accessible label of the document.
+    label: SharedString,
 }
 
 impl<T: ViewSource> DocumentElement<T> {
-    pub fn new(view: DocumentView, source: Entity<T>) -> Self {
-        Self { view, source }
+    pub fn new(view: DocumentView, source: Entity<T>, label: SharedString) -> Self {
+        Self {
+            view,
+            source,
+            label,
+        }
     }
 }
 
@@ -91,7 +97,7 @@ impl<T: ViewSource> Element for DocumentElement<T> {
     }
 
     fn write_a11y_info(&self, node: &mut gpui::accesskit::Node) {
-        node.set_label("Document");
+        node.set_label(self.label.to_string());
     }
 
     fn a11y_synthetic_children(

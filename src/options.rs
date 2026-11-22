@@ -8,6 +8,7 @@ use gpui::{Context, Pixels, SharedString, Window, px};
 
 use crate::editor::MarkdownEditor;
 use crate::extension::Extension;
+use crate::strings::EditorStrings;
 
 /// The callback type of [`EditorOptions::resolve_src`]: maps a source as
 /// written in the Markdown to a file on disk.
@@ -79,6 +80,13 @@ pub struct EditorOptions {
     /// them off with [`ui`](Self::ui) and [`completions`](Self::completions).
     /// Default `true`.
     pub input_rules: bool,
+    /// The texts of the built-in UI (slash menu, format bar, find bar, link
+    /// popover, table menu, accessibility labels). Default: English. Use
+    /// [`EditorStrings::from_env`] for the language of the system,
+    /// [`EditorStrings::for_locale`] for a given one, and
+    /// [`EditorStrings::set`] to change single texts. Change it later with
+    /// [`MarkdownEditor::set_strings`].
+    pub strings: EditorStrings,
 }
 
 impl Default for EditorOptions {
@@ -93,6 +101,7 @@ impl Default for EditorOptions {
             slash_items: Vec::new(),
             ui: UiParts::default(),
             input_rules: true,
+            strings: EditorStrings::default(),
         }
     }
 }
@@ -112,6 +121,7 @@ impl fmt::Debug for EditorOptions {
             .field("slash_items", &self.slash_items)
             .field("ui", &self.ui)
             .field("input_rules", &self.input_rules)
+            .field("strings", &self.strings)
             .finish()
     }
 }

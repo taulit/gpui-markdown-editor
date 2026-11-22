@@ -244,8 +244,8 @@ impl MarkdownEditor {
             }))
         });
         let label = match menu.kind {
-            CompletionKind::WikiLink => "Notes",
-            _ => "Tags",
+            CompletionKind::WikiLink => self.tr("completion.notes"),
+            _ => self.tr("completion.tags"),
         };
         let list = menu_panel(
             &palette,

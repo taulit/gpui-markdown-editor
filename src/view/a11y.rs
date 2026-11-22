@@ -46,7 +46,7 @@ fn role_of(block: &Block) -> (Role, Option<usize>, Option<bool>) {
     }
 }
 
-fn label_of(block: &Block) -> String {
+fn label_of(block: &Block, divider: &str) -> String {
     let text = match &block.kind {
         BlockKind::Image(image) => image.alt.to_string(),
         BlockKind::Table(table) => table
@@ -60,7 +60,7 @@ fn label_of(block: &Block) -> String {
             })
             .collect::<Vec<_>>()
             .join("; "),
-        BlockKind::Rule => "Divider".to_string(),
+        BlockKind::Rule => divider.to_string(),
         _ => block.content.text.clone(),
     };
     text.chars().take(MAX_LABEL).collect()
@@ -70,9 +70,11 @@ fn label_of(block: &Block) -> String {
 pub(crate) fn nodes(
     state: &mut ViewState,
     input: &LayoutInput<'_>,
+    strings: &crate::strings::EditorStrings,
     caret: Option<BlockId>,
     ts: &gpui::WindowTextSystem,
 ) -> Vec<A11yBlock> {
+    let divider = strings.get("a11y.divider");
     let mut out = Vec::new();
     for ix in state.visible.clone() {
         let Some(block) = input.document.blocks().get(ix) else {
@@ -89,7 +91,7 @@ pub(crate) fn nodes(
             out.push(A11yBlock {
                 id: b.id,
                 role,
-                label: label_of(b),
+                label: label_of(b, &divider),
                 level,
                 toggled,
                 selected: caret == Some(b.id),
@@ -141,7 +143,7 @@ mod tests {
             .iter()
             .map(|b| {
                 let (role, level, toggled) = role_of(b);
-                (role, level, toggled, label_of(b))
+                (role, level, toggled, label_of(b, "Divider"))
             })
             .collect();
         assert_eq!(got[0], (Role::Heading, Some(2), None, "Plan".into()));

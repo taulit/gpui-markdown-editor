@@ -129,10 +129,10 @@ impl MarkdownEditor {
         cx: &mut Context<Self>,
     ) {
         self.slash = None;
-        let placeholder = match kind {
-            PromptKind::Link => "Paste or type a link",
-            PromptKind::Image => "Image path or URL",
-        };
+        let placeholder = self.tr(match kind {
+            PromptKind::Link => "link.placeholder",
+            PromptKind::Image => "image.placeholder",
+        });
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx).placeholder(placeholder);
             state.set_value(value, window, cx);
@@ -207,8 +207,8 @@ impl MarkdownEditor {
         let palette = Palette::new(cx);
         let anchor = self.selection_anchor(&prompt.selection, window)?;
         let position = place(anchor, size(WIDTH, HEIGHT), self.view.bounds(), false);
-        let text_button = |id: &'static str, label: &'static str| {
-            tool_button(id, &palette, false, label)
+        let text_button = |id: &'static str, label: SharedString| {
+            tool_button(id, &palette, false, label.clone())
                 .h(px(30.))
                 .px(px(10.))
                 .text_size(px(12.5))
@@ -217,8 +217,8 @@ impl MarkdownEditor {
                 .aria_label(label)
         };
         let (label, apply) = match prompt.kind {
-            PromptKind::Link => ("Edit link", "Apply"),
-            PromptKind::Image => ("Insert image", "Insert"),
+            PromptKind::Link => (self.tr("link.edit"), self.tr("link.apply")),
+            PromptKind::Image => (self.tr("image.insert"), self.tr("image.insert_short")),
         };
         let bar = panel(&palette)
             .id("link-popover")
@@ -247,7 +247,7 @@ impl MarkdownEditor {
             )
             .when(prompt.existing, |s| {
                 s.child(
-                    text_button("link-remove", "Remove")
+                    text_button("link-remove", self.tr("link.remove"))
                         .on_click(cx.listener(|this, _, window, cx| this.remove_link(window, cx))),
                 )
             })
@@ -287,8 +287,8 @@ impl MarkdownEditor {
             self.view.bounds(),
             false,
         );
-        let text_button = |id: &'static str, label: &'static str| {
-            tool_button(id, &palette, false, label)
+        let text_button = |id: &'static str, label: SharedString| {
+            tool_button(id, &palette, false, label.clone())
                 .h(px(28.))
                 .px(px(9.))
                 .text_size(px(12.5))
@@ -300,7 +300,7 @@ impl MarkdownEditor {
         let bubble = panel(&palette)
             .id("link-bubble")
             .role(gpui::Role::Toolbar)
-            .aria_label("Link")
+            .aria_label(self.tr("link.bubble"))
             .occlude()
             .max_w(width)
             .h(BUBBLE_HEIGHT)
@@ -322,15 +322,15 @@ impl MarkdownEditor {
                     .text_color(palette.muted)
                     .child(link.url.clone()),
             )
-            .child(text_button("link-open", "Open").on_click(
+            .child(text_button("link-open", self.tr("link.open")).on_click(
                 cx.listener(move |_, _, _, cx| cx.emit(EditorEvent::LinkClicked(url.to_string()))),
             ))
             .child(
-                text_button("link-edit", "Edit")
+                text_button("link-edit", self.tr("link.edit_short"))
                     .on_click(cx.listener(|this, _, window, cx| this.open_link_prompt(window, cx))),
             )
             .child(
-                text_button("link-unlink", "Remove")
+                text_button("link-unlink", self.tr("link.remove"))
                     .on_click(cx.listener(|this, _, window, cx| this.remove_link(window, cx))),
             );
         Some(overlay(position, appear(bubble, "link-bubble", false)))

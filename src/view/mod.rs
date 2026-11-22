@@ -77,6 +77,8 @@ pub(crate) type ColumnWidths = std::collections::HashMap<BlockId, Vec<f32>>;
 #[derive(Clone)]
 pub(crate) struct ViewInput<'a> {
     pub layout: LayoutInput<'a>,
+    /// The UI texts, for the accessibility labels.
+    pub strings: &'a crate::strings::EditorStrings,
     pub selection: Option<&'a Selection>,
     /// The cells of a [`Selection::Cells`] rectangle.
     pub selected_cells: Vec<BlockId>,
@@ -273,7 +275,7 @@ impl DocumentView {
     /// The accessibility nodes of the blocks laid out in the last frame.
     fn a11y_nodes(&self, input: &ViewInput<'_>, ts: &WindowTextSystem) -> Vec<a11y::A11yBlock> {
         let caret = input.selection.and_then(Selection::head).map(|h| h.block);
-        a11y::nodes(&mut self.state(), &input.layout, caret, ts)
+        a11y::nodes(&mut self.state(), &input.layout, input.strings, caret, ts)
     }
 
     /// The image sources of the blocks laid out in the last frame.

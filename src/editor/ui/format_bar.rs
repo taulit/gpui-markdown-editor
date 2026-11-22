@@ -193,6 +193,7 @@ impl MarkdownEditor {
                 _ => false,
             };
             let (id, label) = tool_name(&tool);
+            let label = self.tr(label);
             let wide = matches!(
                 tool,
                 Tool::AddRow | Tool::AddColumn | Tool::DeleteRow | Tool::DeleteColumn
@@ -216,7 +217,7 @@ impl MarkdownEditor {
         let bar = panel(&palette)
             .id("format-bar")
             .role(gpui::Role::Toolbar)
-            .aria_label("Format")
+            .aria_label(self.tr("format.bar"))
             .occlude()
             .p(px(5.))
             .gap(px(2.))
@@ -252,24 +253,27 @@ impl MarkdownEditor {
             .and_then(|id| self.state.doc.block(id))
             .map(|b| b.kind().clone());
         let styles: [(&str, &str, BlockKind, StyleFn); 5] = [
-            ("style-title", "Title", BlockKind::Heading(1), |d| {
+            ("style-title", "style.title", BlockKind::Heading(1), |d| {
                 d.text_size(px(22.)).font_weight(FontWeight::EXTRA_BOLD)
             }),
-            ("style-heading", "Heading", BlockKind::Heading(2), |d| {
-                d.text_size(px(17.)).font_weight(FontWeight::BOLD)
-            }),
+            (
+                "style-heading",
+                "style.heading",
+                BlockKind::Heading(2),
+                |d| d.text_size(px(17.)).font_weight(FontWeight::BOLD),
+            ),
             (
                 "style-subheading",
-                "Subheading",
+                "style.subheading",
                 BlockKind::Heading(3),
                 |d| d.text_size(px(15.)).font_weight(FontWeight::BOLD),
             ),
-            ("style-text", "Text", BlockKind::Paragraph, |d| {
+            ("style-text", "style.text", BlockKind::Paragraph, |d| {
                 d.text_size(px(14.))
             }),
             (
                 "style-mono",
-                "Monospace",
+                "style.monospace",
                 BlockKind::CodeBlock { lang: None },
                 |d| d.text_size(px(13.)),
             ),
@@ -277,13 +281,14 @@ impl MarkdownEditor {
         let hover = palette.hover;
         let mono = self.style.code_font_family.clone();
         let rows = styles.into_iter().map(|(id, label, kind, look)| {
+            let label = self.tr(label);
             let selected = current.as_ref() == Some(&kind)
                 || (kind == BlockKind::Paragraph && current.is_none());
             let row = div()
                 .id(SharedString::from(id))
                 .debug_selector(move || format!("ui-{id}"))
                 .role(gpui::Role::MenuItem)
-                .aria_label(label)
+                .aria_label(label.clone())
                 .aria_selected(selected)
                 .px(px(12.))
                 .py(px(8.))
@@ -319,6 +324,7 @@ impl MarkdownEditor {
         .map(|(mark, _)| {
             let tool = Tool::Mark(mark.clone());
             let (id, label) = tool_name(&tool);
+            let label = self.tr(label);
             tool_button(
                 SharedString::from(format!("style-{id}")),
                 palette,
@@ -336,7 +342,7 @@ impl MarkdownEditor {
         let menu = panel(palette)
             .id("style-menu")
             .role(gpui::Role::Menu)
-            .aria_label("Styles")
+            .aria_label(self.tr("format.styles"))
             .occlude()
             .flex_col()
             .w(px(250.))
@@ -358,29 +364,31 @@ impl MarkdownEditor {
     }
 }
 
-/// The stable id and the accessible label of a tool.
+/// The stable id of a tool and the key of its accessible label.
 fn tool_name(tool: &Tool) -> (&'static str, &'static str) {
     match tool {
-        Tool::Styles => ("format-styles", "Styles"),
-        Tool::Mark(Mark::Bold) => ("format-bold", "Bold"),
-        Tool::Mark(Mark::Italic) => ("format-italic", "Italic"),
-        Tool::Mark(Mark::Underline) => ("format-underline", "Underline"),
-        Tool::Mark(Mark::Strike) => ("format-strike", "Strikethrough"),
-        Tool::Mark(Mark::Code) => ("format-code", "Code"),
-        Tool::Mark(_) => ("format-highlight", "Highlight"),
+        Tool::Styles => ("format-styles", "format.styles"),
+        Tool::Mark(Mark::Bold) => ("format-bold", "format.bold"),
+        Tool::Mark(Mark::Italic) => ("format-italic", "format.italic"),
+        Tool::Mark(Mark::Underline) => ("format-underline", "format.underline"),
+        Tool::Mark(Mark::Strike) => ("format-strike", "format.strikethrough"),
+        Tool::Mark(Mark::Code) => ("format-code", "format.code"),
+        Tool::Mark(_) => ("format-highlight", "format.highlight"),
         Tool::Command(Command::SetBlock(BlockKind::TaskItem { .. })) => {
-            ("format-checklist", "Checklist")
+            ("format-checklist", "format.checklist")
         }
-        Tool::Command(Command::SetBlock(BlockKind::BulletItem)) => ("format-list", "Bullet list"),
-        Tool::Command(Command::SetBlock(_)) => ("format-quote", "Quote"),
-        Tool::Command(Command::Indent) => ("format-indent", "Indent"),
-        Tool::Command(_) => ("format-table", "Insert table"),
-        Tool::Link => ("format-link", "Link"),
-        Tool::Image => ("format-image", "Insert image"),
-        Tool::AddRow => ("format-add-row", "Add row"),
-        Tool::AddColumn => ("format-add-column", "Add column"),
-        Tool::DeleteRow => ("format-delete-row", "Delete row"),
-        Tool::DeleteColumn => ("format-delete-column", "Delete column"),
+        Tool::Command(Command::SetBlock(BlockKind::BulletItem)) => {
+            ("format-list", "format.bullet_list")
+        }
+        Tool::Command(Command::SetBlock(_)) => ("format-quote", "format.quote"),
+        Tool::Command(Command::Indent) => ("format-indent", "format.indent"),
+        Tool::Command(_) => ("format-table", "format.insert_table"),
+        Tool::Link => ("format-link", "format.link"),
+        Tool::Image => ("format-image", "format.insert_image"),
+        Tool::AddRow => ("format-add-row", "format.add_row"),
+        Tool::AddColumn => ("format-add-column", "format.add_column"),
+        Tool::DeleteRow => ("format-delete-row", "format.delete_row"),
+        Tool::DeleteColumn => ("format-delete-column", "format.delete_column"),
     }
 }
 

@@ -145,3 +145,29 @@ fn slash_menu_can_be_turned_off(cx: &mut TestAppContext) {
         "/"
     );
 }
+
+#[gpui::test]
+fn the_menu_speaks_the_language_of_the_strings(cx: &mut TestAppContext) {
+    let options = EditorOptions {
+        extensions: vec![Box::new(crate::extensions::WikiLink)],
+        strings: crate::EditorStrings::for_locale("de_DE.UTF-8")
+            .set("slash.h3", "Kleine Überschrift"),
+        ..Default::default()
+    };
+    let (editor, cx) = open_with(cx, "", options);
+    type_text(cx, "/über");
+    assert_eq!(
+        menu(&editor, cx).unwrap(),
+        ["Überschrift 1", "Überschrift 2", "Kleine Überschrift"]
+    );
+    // The English labels stay searchable.
+    press(cx, "escape");
+    type_text(cx, " /head");
+    assert_eq!(
+        menu(&editor, cx).unwrap(),
+        ["Überschrift 1", "Überschrift 2", "Kleine Überschrift"]
+    );
+    press(cx, "escape");
+    type_text(cx, " /notiz");
+    assert_eq!(menu(&editor, cx).unwrap(), ["Notiz verlinken"]);
+}

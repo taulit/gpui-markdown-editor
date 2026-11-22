@@ -200,7 +200,23 @@ impl MarkdownEditor {
             keywords: item.keywords.clone(),
             action: SlashAction::Host(item.on_select.clone()),
         }));
+        for entry in &mut entries {
+            self.localize(entry);
+        }
         entries
+    }
+
+    /// Shows `entry` with the text of `slash.<id>` from the editor strings,
+    /// if there is one. The English label stays a keyword, so that `/head`
+    /// finds the headings in every language.
+    fn localize(&self, entry: &mut SlashEntry) {
+        let Some(label) = self.options.strings.lookup(&format!("slash.{}", entry.id)) else {
+            return;
+        };
+        if label != entry.label {
+            let english = std::mem::replace(&mut entry.label, label);
+            entry.keywords.push(english);
+        }
     }
 
     /// Opens the menu if a `/` was just typed at the start of a line or
@@ -432,7 +448,7 @@ impl MarkdownEditor {
             &palette,
             "slash-menu",
             gpui::Role::Menu,
-            "Insert block",
+            self.tr("slash.menu"),
             WIDTH,
         )
         .children(rows)
@@ -443,7 +459,7 @@ impl MarkdownEditor {
                     .py(px(8.))
                     .text_size(px(13.))
                     .text_color(palette.muted)
-                    .child("No matching blocks"),
+                    .child(self.tr("slash.empty")),
             )
         });
         Some(overlay(position, appear(list, "slash-menu", false)))

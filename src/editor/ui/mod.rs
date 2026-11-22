@@ -93,7 +93,7 @@ pub(super) fn menu_panel(
     palette: &Palette,
     id: &'static str,
     role: gpui::Role,
-    label: &'static str,
+    label: SharedString,
     width: Pixels,
 ) -> Stateful<Div> {
     panel(palette)
