@@ -32,7 +32,7 @@ Not on crates.io yet. Depend on a git tag:
 
 ```toml
 [dependencies]
-gpui-markdown-editor = { git = "https://github.com/taulit/gpui-markdown-editor", tag = "v0.1.0" }
+gpui-markdown-editor = { git = "https://github.com/taulit/gpui-markdown-editor", tag = "v0.2.0" }
 ```
 
 ## Quick start

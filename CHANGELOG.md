@@ -3,7 +3,7 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-22
 
 - The built-in UI is translated: English, German, Spanish, French,
   Italian, Japanese, Polish, Brazilian Portuguese, Russian and simplified
