@@ -48,6 +48,23 @@ pub struct CustomNodeId(pub &'static str);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CustomMarkId(pub &'static str);
 
+/// What a single line break inside a paragraph means.
+///
+/// CommonMark joins the lines of a paragraph: a line break that is not marked
+/// as a hard break (two trailing spaces or a backslash) reads as a space.
+/// Many editors (Typora, Obsidian, GitHub comments) show it as a line break
+/// instead, and people write their files for that.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LineBreaks {
+    /// CommonMark: a soft line break is a space. New line breaks are written
+    /// as hard breaks (`\` at the end of the line).
+    #[default]
+    Join,
+    /// Every line break is shown as one and written back as a plain line
+    /// break, so the lines of the file stay as they are.
+    Keep,
+}
+
 /// A parsed Markdown document.
 #[derive(Clone, Debug)]
 pub struct Document {
@@ -57,6 +74,8 @@ pub struct Document {
     pub(crate) next_id: u64,
     /// The extensions the document was parsed with, used again when writing.
     pub(crate) extensions: Extensions,
+    /// How line breaks inside paragraphs were read, and are written.
+    pub(crate) line_breaks: LineBreaks,
 }
 
 impl Default for Document {

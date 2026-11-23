@@ -8,6 +8,7 @@ use gpui::{Context, Pixels, SharedString, Window, px};
 
 use crate::editor::MarkdownEditor;
 use crate::extension::Extension;
+use crate::model::LineBreaks;
 use crate::strings::EditorStrings;
 
 /// The callback type of [`EditorOptions::resolve_src`]: maps a source as
@@ -87,6 +88,11 @@ pub struct EditorOptions {
     /// [`EditorStrings::set`] to change single texts. Change it later with
     /// [`MarkdownEditor::set_strings`].
     pub strings: EditorStrings,
+    /// What a single line break inside a paragraph means. Default
+    /// [`LineBreaks::Keep`]: shown as a line break and written back as one,
+    /// as Typora and Obsidian do. [`LineBreaks::Join`] reads it as a space,
+    /// as CommonMark does.
+    pub line_breaks: LineBreaks,
 }
 
 impl Default for EditorOptions {
@@ -102,6 +108,7 @@ impl Default for EditorOptions {
             ui: UiParts::default(),
             input_rules: true,
             strings: EditorStrings::default(),
+            line_breaks: LineBreaks::Keep,
         }
     }
 }
@@ -122,6 +129,7 @@ impl fmt::Debug for EditorOptions {
             .field("ui", &self.ui)
             .field("input_rules", &self.input_rules)
             .field("strings", &self.strings)
+            .field("line_breaks", &self.line_breaks)
             .finish()
     }
 }

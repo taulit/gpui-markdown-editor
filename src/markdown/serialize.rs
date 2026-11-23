@@ -261,6 +261,7 @@ pub(crate) fn serialize(document: &Document, mode: Mode) -> String {
         inline: InlineWriter {
             extensions: &document.extensions,
             escape_brackets: rewrites && has_definitions(all),
+            keep_line_breaks: document.line_breaks == crate::model::LineBreaks::Keep,
         },
     };
 

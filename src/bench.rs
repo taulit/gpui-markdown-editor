@@ -13,7 +13,11 @@ pub struct EditCore(EditorState);
 impl EditCore {
     /// Parses `markdown` with `extensions`, caret at the start.
     pub fn new(markdown: &str, extensions: Extensions) -> Self {
-        Self(EditorState::from_markdown(markdown, extensions))
+        Self(EditorState::from_markdown(
+            markdown,
+            extensions,
+            crate::model::LineBreaks::Join,
+        ))
     }
 
     /// The document being edited.
