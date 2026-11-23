@@ -24,7 +24,7 @@ pub use html::html_to_markdown;
 pub(crate) use inline::normalize_marks;
 
 use crate::extension::Extensions;
-use crate::model::{Block, BlockId, Document};
+use crate::model::{Block, BlockId, Document, LineBreaks};
 
 impl Document {
     /// Parses Markdown (CommonMark with GFM tables, task lists and
@@ -40,7 +40,23 @@ impl Document {
     /// Like [`parse`](Self::parse), with custom inline syntax from
     /// `extensions`. The document keeps the extensions for serialization.
     pub fn parse_with(source: &str, extensions: Extensions) -> Self {
-        parse::parse(source, extensions)
+        parse::parse(source, extensions, LineBreaks::Join)
+    }
+
+    /// Like [`parse_with`](Self::parse_with), reading single line breaks
+    /// inside paragraphs as `line_breaks` says. The document keeps the
+    /// setting for serialization.
+    pub fn parse_with_line_breaks(
+        source: &str,
+        extensions: Extensions,
+        line_breaks: LineBreaks,
+    ) -> Self {
+        parse::parse(source, extensions, line_breaks)
+    }
+
+    /// How this document reads and writes line breaks inside paragraphs.
+    pub fn line_breaks(&self) -> LineBreaks {
+        self.line_breaks
     }
 
     /// Serializes the document to Markdown.

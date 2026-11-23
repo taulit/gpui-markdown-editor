@@ -3,6 +3,26 @@
 All notable changes are documented here, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 API changes between tags are listed here because downstream (Sheaf) pins tags.
 
+## [0.3.0]
+
+- **Behaviour change:** single line breaks inside a paragraph are kept.
+  New option `EditorOptions::line_breaks: LineBreaks` with the default
+  `LineBreaks::Keep`: a line break is shown as one and an edited
+  paragraph writes it back as a plain line break, as Typora and Obsidian
+  do. Before, it read as a space (CommonMark) and editing a paragraph
+  joined its lines. `LineBreaks::Join` restores that.
+  `Document::parse_with_line_breaks` and `Document::line_breaks` are new;
+  `Document::parse` and `parse_with` still read CommonMark (`Join`).
+  Copied Markdown always marks its breaks (`\` at the end of the line).
+- New `EditorStyle::bionic_reading: bool` (default `false`): a reading
+  aid that draws the first part of every word bold. Display only; code
+  is left alone.
+- Roomier defaults of `EditorStyle::from_theme`: `paragraph_spacing` 6 →
+  12 px, `heading_spacing_above` 22 → 28 px, `heading_spacing_below`
+  6 → 8 px.
+- Like `strings` in 0.2.0, struct literals of `EditorOptions` and
+  `EditorStyle` without `..` no longer compile.
+
 ## [0.2.0] - 2026-11-22
 
 - The built-in UI is translated: English, German, Spanish, French,

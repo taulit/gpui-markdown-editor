@@ -93,6 +93,8 @@ impl EditorState {
             source: Arc::from(""),
             next_id: self.doc.next_id,
             extensions: self.doc.extensions.clone(),
+            // Copied Markdown marks its line breaks, so other apps keep them.
+            line_breaks: crate::model::LineBreaks::Join,
         };
         fragment.normalized()
     }
@@ -125,6 +127,8 @@ impl EditorState {
             source: Arc::from(""),
             next_id: self.doc.next_id + 1,
             extensions: self.doc.extensions.clone(),
+            // Copied Markdown marks its line breaks, so other apps keep them.
+            line_breaks: crate::model::LineBreaks::Join,
         };
         fragment.normalized()
     }
@@ -161,7 +165,13 @@ impl EditorState {
                         .is_some_and(|b| order::is_literal(&b.kind))
             })
         });
-        if literal_or_cell || is_plain(&Document::parse_with(text, self.doc.extensions.clone())) {
+        if literal_or_cell
+            || is_plain(&Document::parse_with_line_breaks(
+                text,
+                self.doc.extensions.clone(),
+                self.doc.line_breaks,
+            ))
+        {
             return self.insert_plain_text(text);
         }
         self.insert_markdown(text)
@@ -177,7 +187,11 @@ impl EditorState {
         let lead = &markdown[..markdown.len() - markdown.trim_start_matches([' ', '\t']).len()];
         let trail = &markdown[markdown.trim_end_matches([' ', '\t']).len()..];
         if !core.is_empty() && (!lead.is_empty() || !trail.is_empty()) {
-            let fragment = Document::parse_with(core, self.doc.extensions.clone());
+            let fragment = Document::parse_with_line_breaks(
+                core,
+                self.doc.extensions.clone(),
+                self.doc.line_breaks,
+            );
             let inline_only = !fragment.blocks.is_empty()
                 && fragment
                     .blocks
@@ -195,7 +209,11 @@ impl EditorState {
                 return self.insert_inline_lines(lines);
             }
         }
-        let fragment = Document::parse_with(markdown, self.doc.extensions.clone());
+        let fragment = Document::parse_with_line_breaks(
+            markdown,
+            self.doc.extensions.clone(),
+            self.doc.line_breaks,
+        );
         let blocks = fragment.blocks;
         if blocks.is_empty() {
             return false;

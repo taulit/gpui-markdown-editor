@@ -130,6 +130,12 @@ pub struct EditorStyle {
     pub image_radius: Pixels,
     /// Height of the box shown while an image is not loaded.
     pub image_placeholder_height: Pixels,
+
+    /// Reading aid in the manner of "bionic reading": the first part of
+    /// every word is drawn bold, which gives the eye fixed points to jump
+    /// between. Display only: the Markdown does not change. Not applied to
+    /// code. Default `false`.
+    pub bionic_reading: bool,
 }
 
 impl EditorStyle {
@@ -155,7 +161,7 @@ impl EditorStyle {
                 bottom: px(120.),
                 left: px(48.),
             },
-            paragraph_spacing: px(6.),
+            paragraph_spacing: px(12.),
             list_marker_gap: px(10.),
 
             title_size: px(28.),
@@ -165,8 +171,8 @@ impl EditorStyle {
             h3_size: px(16.),
             h3_weight: FontWeight::BOLD,
             heading_line_height: 1.2,
-            heading_spacing_above: px(22.),
-            heading_spacing_below: px(6.),
+            heading_spacing_above: px(28.),
+            heading_spacing_below: px(8.),
             title_spacing_below: px(10.),
 
             code_font_family: theme.mono_font_family.clone(),
@@ -206,6 +212,8 @@ impl EditorStyle {
 
             image_radius: px(12.),
             image_placeholder_height: px(220.),
+
+            bionic_reading: false,
         }
     }
 }

@@ -439,7 +439,7 @@ pub use extension::{Extension, Extensions, InlineMatch, MarkColor, MarkStyle};
 pub use meta::DocMeta;
 pub use model::{
     Align, Block, BlockId, BlockKind, Cell, CustomMarkId, CustomNodeId, Document, ImageData,
-    Inline, Mark, MarkSpan, TableData, TextPos, TextRange,
+    Inline, LineBreaks, Mark, MarkSpan, TableData, TextPos, TextRange,
 };
 pub use options::{
     Completion, CompletionKind, CompletionProvider, EditorOptions, ImageHandler, SlashHandler,

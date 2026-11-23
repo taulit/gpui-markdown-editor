@@ -85,8 +85,16 @@ impl EditorState {
         state
     }
 
-    pub(crate) fn from_markdown(markdown: &str, extensions: crate::extension::Extensions) -> Self {
-        Self::new(Document::parse_with(markdown, extensions))
+    pub(crate) fn from_markdown(
+        markdown: &str,
+        extensions: crate::extension::Extensions,
+        line_breaks: crate::model::LineBreaks,
+    ) -> Self {
+        Self::new(Document::parse_with_line_breaks(
+            markdown,
+            extensions,
+            line_breaks,
+        ))
     }
 
     /// Replaces the document and clears the history.
@@ -106,7 +114,12 @@ impl EditorState {
     /// new document, caret at the start, empty history.
     pub(crate) fn set_markdown(&mut self, markdown: &str) {
         let extensions = self.doc.extensions.clone();
-        self.set_document(Document::parse_with(markdown, extensions));
+        let line_breaks = self.doc.line_breaks;
+        self.set_document(Document::parse_with_line_breaks(
+            markdown,
+            extensions,
+            line_breaks,
+        ));
     }
 
     fn reset_selection(&mut self) {

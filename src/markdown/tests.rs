@@ -473,3 +473,73 @@ fn a_lone_space_entity_is_ordinary_text() {
     assert_eq!(document.blocks[1].content.text, " ");
     assert_eq!(document.to_markdown(), source);
 }
+
+fn parse_keeping(source: &str) -> Document {
+    Document::parse_with_line_breaks(source, extensions(), crate::model::LineBreaks::Keep)
+}
+
+/// Retypes the text of the first block, as typing into it would.
+fn edit_first(document: &mut Document, text: &str) {
+    let block = &mut document.blocks[0];
+    block.content = Inline::plain(text);
+    block.dirty = true;
+}
+
+#[test]
+fn kept_line_breaks_are_line_breaks_and_stay_plain() {
+    let source = "**P-01** Frage\nAnnahme: nein\nAntwort: ja\n\nNächster Absatz\n";
+    let mut document = parse_keeping(source);
+    assert_eq!(
+        document.blocks()[0].text(),
+        "P-01 Frage\nAnnahme: nein\nAntwort: ja"
+    );
+    assert_eq!(document.to_markdown(), source, "untouched");
+
+    let block = &mut document.blocks[0];
+    block.content.text.push_str(" sicher");
+    block.dirty = true;
+    assert_eq!(
+        document.to_markdown(),
+        "**P-01** Frage\nAnnahme: nein\nAntwort: ja sicher\n\nNächster Absatz\n"
+    );
+
+    // CommonMark reads the same lines as one line.
+    let joined = parse(source);
+    assert_eq!(
+        joined.blocks()[0].text(),
+        "P-01 Frage Annahme: nein Antwort: ja"
+    );
+}
+
+#[test]
+fn kept_line_breaks_escape_what_would_start_a_block() {
+    let mut document = parse_keeping("x\n");
+    for text in [
+        "a\n- b", "a\n# b", "a\n1. b", "a\n> b", "a\n---", "a\n===", "C:\\\nb",
+    ] {
+        edit_first(&mut document, text);
+        let written = document.to_markdown();
+        let again = parse_keeping(&written);
+        assert_eq!(
+            again.blocks().len(),
+            1,
+            "{text:?} was written as {written:?}"
+        );
+        assert_eq!(
+            again.blocks()[0].text(),
+            text,
+            "{text:?} was written as {written:?}"
+        );
+    }
+}
+
+#[test]
+fn hard_breaks_are_line_breaks_in_both_modes() {
+    for source in ["a  \nb\n", "a\\\nb\n"] {
+        assert_eq!(parse(source).blocks()[0].text(), "a\nb");
+        assert_eq!(parse_keeping(source).blocks()[0].text(), "a\nb");
+    }
+    let mut joined = parse("x\n");
+    edit_first(&mut joined, "a\nb");
+    assert_eq!(joined.to_markdown(), "a\\\nb\n");
+}

@@ -17,7 +17,8 @@ use super::inline::{Escaped, InlineBuilder};
 use super::prefix::{self, Container};
 use crate::extension::Extensions;
 use crate::model::{
-    Align, Block, BlockId, BlockKind, Cell, Document, ImageData, Inline, Mark, TableData,
+    Align, Block, BlockId, BlockKind, Cell, Document, ImageData, Inline, LineBreaks, Mark,
+    TableData,
 };
 
 /// How deep quotes and list items may nest before the rest is kept as raw
@@ -41,7 +42,7 @@ fn options() -> Options {
 }
 
 /// Parses `source` into a document.
-pub(crate) fn parse(source: &str, extensions: Extensions) -> Document {
+pub(crate) fn parse(source: &str, extensions: Extensions, line_breaks: LineBreaks) -> Document {
     let bom = if source.starts_with(BOM) {
         BOM.len()
     } else {
@@ -51,6 +52,7 @@ pub(crate) fn parse(source: &str, extensions: Extensions) -> Document {
     let body = front_matter.as_ref().map_or(bom, |range| range.end);
 
     let mut parser = BlockParser::new(source, body, &extensions);
+    parser.keep_line_breaks = line_breaks == LineBreaks::Keep;
     let mut blocks = Vec::new();
     if let Some(range) = front_matter {
         blocks.push(parser.new_block(BlockKind::Raw, Inline::default(), Vec::new(), range));
@@ -65,6 +67,7 @@ pub(crate) fn parse(source: &str, extensions: Extensions) -> Document {
         source: Arc::from(source),
         next_id,
         extensions,
+        line_breaks,
     }
 }
 
@@ -143,6 +146,8 @@ struct BlockParser<'s, 'e> {
     containers: Vec<Container>,
     /// Start of the line last asked for and the offset up to which it holds.
     line_cache: (usize, usize),
+    /// Soft line breaks are line breaks, see [`LineBreaks::Keep`].
+    keep_line_breaks: bool,
 }
 
 impl<'s, 'e> BlockParser<'s, 'e> {
@@ -158,6 +163,7 @@ impl<'s, 'e> BlockParser<'s, 'e> {
             next_id: 0,
             containers: Vec::new(),
             line_cache: (base, base),
+            keep_line_breaks: false,
         }
     }
 
@@ -733,7 +739,11 @@ impl<'s, 'e> BlockParser<'s, 'e> {
                 }
                 Event::SoftBreak => {
                     others += 1;
-                    builder.soft_break();
+                    if self.keep_line_breaks {
+                        builder.hard_break();
+                    } else {
+                        builder.soft_break();
+                    }
                 }
                 Event::HardBreak => {
                     others += 1;

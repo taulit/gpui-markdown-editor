@@ -349,7 +349,12 @@ pub(crate) fn build_runs(
             color: None,
         }),
     };
-    if spec.plain || inline.marks.is_empty() || text.is_empty() {
+    let fixations = if style.bionic_reading && !spec.plain {
+        fixations(text)
+    } else {
+        Vec::new()
+    };
+    if spec.plain || (inline.marks.is_empty() && fixations.is_empty()) || text.is_empty() {
         return (vec![base], Vec::new());
     }
 
@@ -370,6 +375,10 @@ pub(crate) fn build_runs(
         cuts.push(m.range.start);
         cuts.push(m.range.end);
     }
+    for range in &fixations {
+        cuts.push(range.start);
+        cuts.push(range.end);
+    }
     cuts.sort_unstable();
     cuts.dedup();
 
@@ -381,6 +390,16 @@ pub(crate) fn build_runs(
         run.len = b - a;
         let mut weight = spec.weight;
         let mut background = None;
+        let in_code = marks.iter().any(|m| {
+            m.range.start <= a && m.range.end >= b && matches!(m.mark, Mark::Code | Mark::Raw)
+        });
+        if !in_code
+            && fixations
+                .iter()
+                .any(|range| range.start <= a && range.end >= b)
+        {
+            weight = weight.max_weight(FontWeight::BOLD);
+        }
         for m in marks
             .iter()
             .filter(|m| m.range.start <= a && m.range.end >= b)
@@ -462,6 +481,36 @@ pub(crate) fn build_runs(
     (runs, backgrounds)
 }
 
+/// The start of every word that the reading aid draws bold
+/// ([`EditorStyle::bionic_reading`]): one letter of words up to three
+/// letters, about 40 % of longer ones. A word is a run of letters; digits and
+/// punctuation are left as they are.
+pub(crate) fn fixations(text: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut chars = text.char_indices().peekable();
+    while let Some((start, ch)) = chars.next() {
+        if !ch.is_alphabetic() {
+            continue;
+        }
+        let mut ends = vec![start + ch.len_utf8()];
+        while let Some(&(at, next)) = chars.peek() {
+            if !next.is_alphabetic() {
+                break;
+            }
+            ends.push(at + next.len_utf8());
+            chars.next();
+        }
+        let letters = ends.len();
+        let bold = if letters <= 3 {
+            1
+        } else {
+            (letters * 2).div_ceil(5)
+        };
+        ranges.push(start..ends[bold - 1]);
+    }
+    ranges
+}
+
 fn link_look(run: &mut TextRun, style: &EditorStyle) {
     if run.strikethrough.is_none() {
         run.color = style.link_color;
@@ -535,5 +584,53 @@ mod spec_tests {
             ..spec
         };
         assert!(plain.font().features.tag_value_list().is_empty());
+    }
+
+    #[test]
+    fn fixations_bold_the_start_of_each_word() {
+        let text = "Ein Angebotsrechner für P-01, öffnet";
+        let bold: Vec<&str> = fixations(text).into_iter().map(|r| &text[r]).collect();
+        assert_eq!(bold, ["E", "Angebo", "f", "P", "öff"]);
+        assert!(fixations("1.000 € – 42").is_empty());
+    }
+
+    #[gpui::test]
+    fn the_reading_aid_bolds_word_starts_but_not_code(cx: &mut gpui::TestAppContext) {
+        let spec = TextSpec {
+            family: "Inter".into(),
+            size: gpui::px(14.),
+            line_height: gpui::px(20.),
+            weight: gpui::FontWeight::NORMAL,
+            italic: false,
+            color: gpui::black(),
+            strike: false,
+            plain: false,
+            tabular: false,
+        };
+        let mut inline = Inline::plain("Hallo `code` Welt");
+        inline.marks.push(crate::model::MarkSpan {
+            range: 6..12,
+            mark: Mark::Code,
+        });
+        let mut style = cx.update(|cx| {
+            gpui_component::init(cx);
+            EditorStyle::from_theme(cx)
+        });
+        let weights = |style: &EditorStyle| {
+            let (runs, _) = build_runs(&inline, &spec, style, &Default::default());
+            let mut at = 0;
+            runs.iter()
+                .map(|run| {
+                    let piece = &inline.text[at..at + run.len];
+                    at += run.len;
+                    (piece.to_owned(), run.font.weight == gpui::FontWeight::BOLD)
+                })
+                .filter(|(_, bold)| *bold)
+                .map(|(piece, _)| piece)
+                .collect::<Vec<_>>()
+        };
+        assert!(weights(&style).is_empty());
+        style.bionic_reading = true;
+        assert_eq!(weights(&style), ["Ha", "We"]);
     }
 }

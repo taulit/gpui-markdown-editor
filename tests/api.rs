@@ -83,10 +83,11 @@ fn typing_edits_marks_dirty_and_emits_changed(cx: &mut TestAppContext) {
     assert_eq!(changes(&events), 0, "set_markdown must not emit Changed");
 
     // The cursor is at the start after loading. The edited paragraph is
-    // written normalized: a soft line break is a space in the model.
+    // written normalized; its line break stays one (`LineBreaks::Keep`, the
+    // default), in the line ending of the source.
     cx.simulate_input("ab");
     editor.read_with(cx, |editor, _| {
-        assert_eq!(editor.markdown(), "abline one line two");
+        assert_eq!(editor.markdown(), "abline one\r\nline two");
         assert!(editor.is_dirty());
     });
     assert_eq!(changes(&events), 2);

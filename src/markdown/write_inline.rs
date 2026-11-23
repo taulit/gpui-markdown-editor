@@ -38,6 +38,9 @@ pub(crate) struct InlineWriter<'a> {
     /// `[text]` may be a link. Both brackets are escaped then: a stray `]`
     /// can keep pulldown-cmark from resolving a reference in front of it.
     pub escape_brackets: bool,
+    /// Line breaks are written as plain line breaks, see
+    /// [`LineBreaks::Keep`](crate::LineBreaks::Keep).
+    pub keep_line_breaks: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -400,7 +403,11 @@ impl InlineWriter<'_> {
             index += 1;
         }
 
-        let hard_break = if ctx.single_line { " " } else { "\\\n" };
+        let hard_break = match (ctx.single_line, self.keep_line_breaks) {
+            (true, _) => " ",
+            (false, true) => "\n",
+            (false, false) => "\\\n",
+        };
         let mut out = String::with_capacity(text.len() + 16);
         for piece in &mut emit.pieces {
             match piece {
